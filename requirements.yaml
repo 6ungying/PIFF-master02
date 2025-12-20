@@ -1,0 +1,29 @@
+name: flooddiff
+channels:
+  - anaconda
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - numpy
+  - scipy
+  - termcolor
+  - easydict
+  - ipdb
+  - torchvision==0.13
+  - tqdm
+  - scikit-learn
+  - imageio
+  - matplotlib
+  - tensorboard
+  - torchmetrics==0.9.3
+  - pip
+  - pip:
+    - prefetch_generator
+    - colored-traceback
+    - torch-ema
+    - gdown==4.6.0
+    - clean-fid==0.1.35
+    - rich
+    - lmdb
+    - wandb

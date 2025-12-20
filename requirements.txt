@@ -1,0 +1,12 @@
+numpy
+scipy
+termcolor
+easydict
+ipdb
+torchvision==0.13
+tqdm
+scikit-learn
+imageio
+matplotlib
+tensorboard
+torchmetrics==0.9.3
