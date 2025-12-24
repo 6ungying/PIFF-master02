@@ -45,7 +45,7 @@ def create_training_options():
     # --------------- basic ---------------
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed",           type=int,   default=0)
-    parser.add_argument("--name",           type=str,   default='flood-single-b128-sde-norm-novar-rand02-PY',        help="experiment ID")
+    parser.add_argument("--name",           type=str,   default='flood-single-b128-sde-norm-novar-rand03-PY',        help="experiment ID")
     parser.add_argument("--ckpt",           type=str,   default=None,        help="resumed checkpoint name")
     parser.add_argument("--gpu",            type=int,   default=None,        help="set only if you wish to run on a particular device; use -1 for CPU")
     parser.add_argument("--n-gpu-per-node", type=int,   default=1,           help="number of gpu on each node")
@@ -98,8 +98,18 @@ def create_training_options():
     parser.add_argument("--log-writer",     type=str,   default='tensorbard',        help="log writer: can be tensorbard, wandb, or None")
     parser.add_argument("--wandb-api-key",  type=str,   default=None,        help="unique API key of your W&B account; see https://wandb.ai/authorize")
     parser.add_argument("--wandb-user",     type=str,   default=None,        help="user name of your W&B account")
+    
+    # --------------- test DEM configuration ---------------
+    parser.add_argument("--test-dem-list",  type=str,   default=None,        help="Comma-separated list of test DEM numbers to exclude from training, e.g., '8,29,62'")
 
     opt = parser.parse_args()
+    
+    # ========= process test DEM list =========
+    if opt.test_dem_list:
+        opt.test_dem_list = [int(x.strip()) for x in opt.test_dem_list.split(',')]
+        print(f"Test DEMs (excluded from training): {opt.test_dem_list}")
+    else:
+        opt.test_dem_list = None
 
     # ========= auto setup =========
     # 嘗試使用 GPU（即使有 sm_120 警告也試試看）

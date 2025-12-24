@@ -184,9 +184,16 @@ class floodDataset(Dataset):
                 dem_folder = [8, 29, 62]
                 print(f"[Test mode] Using default test DEMs: {dem_folder}")
         else:
-            # 訓練模式: 使用所有可用 DEM
-            dem_folder = all_available_dems
-            print(f"[Training mode] Using all available DEMs: {sorted(dem_folder)}")
+            # 訓練模式: 使用所有可用 DEM,但排除測試用的 DEM
+            if hasattr(opt, 'test_dem_list') and opt.test_dem_list is not None:
+                # 從所有可用 DEM 中排除測試 DEM
+                dem_folder = [dem for dem in all_available_dems if dem not in opt.test_dem_list]
+                print(f"[Training mode] Excluding test DEMs {opt.test_dem_list}")
+                print(f"[Training mode] Using DEMs: {sorted(dem_folder)}")
+            else:
+                # 沒指定測試 DEM,使用全部
+                dem_folder = all_available_dems
+                print(f"[Training mode] Using all available DEMs: {sorted(dem_folder)}")
             #dem_folder = [8, 29, 62]
             #self.flood_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\d'
             #self.vx = "C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\vx"
@@ -459,9 +466,9 @@ class floodDataset(Dataset):
 
         # Normalize
         dem_image = (dem_image - 0.18) / 0.22
-        flood_image = (flood_image - 0.98) / 0.056
-        vx_image = (vx_image - 0.497) / 0.0043
-        vy_image = (vy_image - 0.497) / 0.0047
+        flood_image = (flood_image - 0.98) / 0.039
+        vx_image = (vx_image - 0.552) / 0.093
+        vy_image = (vy_image - 0.489) / 0.0818
         
         # Get next timestep data
         next_data = self.get_next_timestep_data(cell_position[0], cell_position[1], cell_position[2])

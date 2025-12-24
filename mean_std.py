@@ -94,14 +94,21 @@ import pandas as pd
 def calculate_mean_std(folder_path, file_pattern):
     """
     Calculate mean and std for images in a folder structure
+    Structure: folder_path/{dem_num}/{RF_scenario}/{images}
     """
     file_paths = []
-    for rainfall_folder in os.listdir(folder_path):
-        rainfall_path = os.path.join(folder_path, rainfall_folder)
-        if os.path.isdir(rainfall_path):
-            for png_file in os.listdir(rainfall_path):
-                if png_file.endswith('.png') and file_pattern in png_file:
-                    file_paths.append(os.path.join(rainfall_path, png_file))
+    # 遍歷 DEM 資料夾 (1, 2, 3, ...)
+    for dem_folder in os.listdir(folder_path):
+        dem_path = os.path.join(folder_path, dem_folder)
+        if os.path.isdir(dem_path):
+            # 遍歷降雨情境資料夾 (RF01, RF02, ...)
+            for rainfall_folder in os.listdir(dem_path):
+                rainfall_path = os.path.join(dem_path, rainfall_folder)
+                if os.path.isdir(rainfall_path):
+                    # 取得該資料夾內的 PNG 檔案
+                    for png_file in os.listdir(rainfall_path):
+                        if png_file.endswith('.png') and file_pattern in png_file:
+                            file_paths.append(os.path.join(rainfall_path, png_file))
     
     mean_sum = 0
     std_sum = 0
@@ -128,24 +135,24 @@ def calculate_mean_std(folder_path, file_pattern):
 
 # Calculate for depth (d)
 print("=== Calculating statistics for depth (d) ===")
-depth_path = 'C:\\Users\\Hank\\Desktop\\PIFF-master02\\data\\train\\depth'
+depth_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\d'
 d_mean, d_std = calculate_mean_std(depth_path, '_d_')
 print(f'Depth - Mean: {d_mean}, Std: {d_std}')
 
 # Calculate for Vx
 print("\n=== Calculating statistics for Vx ===")
-vx_path = 'C:\\Users\\Hank\\Desktop\\PIFF-master02\\data\\train\\Vx'
+vx_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\vx'
 vx_mean, vx_std = calculate_mean_std(vx_path, '_vx_')
 print(f'Vx - Mean: {vx_mean}, Std: {vx_std}')
 
 # Calculate for Vy
 print("\n=== Calculating statistics for Vy ===")
-vy_path = 'C:\\Users\\Hank\\Desktop\\PIFF-master02\\data\\train\\Vy'
+vy_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\vy'
 vy_mean, vy_std = calculate_mean_std(vy_path, '_vy_')
 print(f'Vy - Mean: {vy_mean}, Std: {vy_std}')
 
 # Calculate for V
 print("\n=== Calculating statistics for V ===")
-vz_path = 'C:\\Users\\Hank\\Desktop\\PIFF-master02\\data\\train\\V'
+vz_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\v'
 v_mean, v_std = calculate_mean_std(vz_path, '_v_')
 print(f'V - Mean: {v_mean}, Std: {v_std}')

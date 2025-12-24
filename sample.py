@@ -281,12 +281,12 @@ def main(opt):
 
             # 分別對每個通道進行反正規化
             if rec.shape[0] >= 3:
-                 # depth channel (假設使用 0.987, 0.0343)
-                 depth_rec = rec[0:1] * 0.0343 + 0.987
-                 # vx channel (假設使用 0.497, 0.0043) 
-                 x_rec = rec[1:2] * 0.0043 + 0.497
-                 # vy channel (假設使用 0.497, 0.0047)
-                 vy_rec = rec[2:3] * 0.0047 + 0.497
+                 # depth channel
+                 depth_rec = rec[0:1] * 0.0391 + 0.987
+                 # vx channel
+                 vx_rec = rec[1:2] * 0.0932 + 0.552
+                 # vy channel
+                 vy_rec = rec[2:3] * 0.0818 + 0.489
 
             # Save each channel separately: h (depth), vx, vy
             path_base = image_name[i].split("\\")[-1]
@@ -305,7 +305,7 @@ def main(opt):
                 # Save vx - replace 'd' with 'vx' 
                 vx_name = path_base.replace('_d_', '_vx_') + '.png'
                 vx_path = recon_imgs_fn.parent / f"recon_{vx_name}"
-                tu.save_image(x_rec, vx_path)
+                tu.save_image(vx_rec, vx_path)
                 
                 # Save vy - replace 'd' with 'vy'
                 vy_name = path_base.replace('_d_', '_vy_') + '.png'
@@ -359,7 +359,7 @@ if __name__ == '__main__':
     # sample
     parser.add_argument("--batch-size",     type=int,  default=30)
     parser.add_argument("--sampling-method", type=str, default='euler-maruyama', help="sampling method")
-    parser.add_argument("--ckpt",           type=str,  default='C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\results\\flood-single-b128-sde-norm-novar-rand02-PY',        help="the checkpoint name from which we wish to sample")
+    parser.add_argument("--ckpt",           type=str,  default='C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\results\\flood-single-b128-sde-norm-novar-rand03-PY',        help="the checkpoint name from which we wish to sample")
     parser.add_argument("--nfe",            type=int,  default=10,        help="sampling steps")
     parser.add_argument("--clip-denoise",   action="store_true",            help="clamp predicted image to [-1,1] at each")
     parser.add_argument("--use-fp16",       action="store_true",            help="use fp16 network weight for faster sampling")
