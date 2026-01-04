@@ -119,8 +119,31 @@ def compute_batch(ckpt_opt, corrupt_type, corrupt_method, out):
     # Map those into the expected return signature used by the sampling loop.
     if isinstance(out, (list, tuple)) and len(out) >= 10:
         # Handle the singleDEMFloodDataset / mixture style
-        # Unpack conservatively from the end to support 12-item (舊) and 13-item (新) tuples
-        if len(out) == 13:
+        # Unpack conservatively from the end to support 12-item (舊), 13-item, 和 15-item (最新) tuples
+        if len(out) == 15:
+            # 最新格式：包含 next_timestep_data, max_depth, dem_id (從 custom_collate_fn)
+            (flood_image, vx_image, vy_image, dem_image, binary_mask, vx_binary_mask, 
+             vy_binary_mask, rainfall, image_path, vx_path, vy_path, spm_image, 
+             next_timestep_data, max_depth, dem_id) = out
+            # Dataset returns single-channel flood/vx/vy; concat to form 3-channel input [B,3,H,W]
+            try:
+                corrupt_img = torch.cat([flood_image, vx_image, vy_image], dim=1)
+            except Exception:
+                corrupt_img = flood_image
+            x1 = corrupt_img.to(opt.device)
+            mask = binary_mask
+            # rainfall 已經是批次張量 [B, 24]
+            if not torch.is_tensor(rainfall):
+                y = torch.tensor(rainfall, dtype=torch.long)
+            else:
+                y = rainfall.long()
+            # 確保是 2D: [B, 24]
+            if y.dim() == 1:
+                y = y.unsqueeze(0)
+            y = (y // 5).clamp(min=0, max=99).to(opt.device)
+            image_name = image_path
+            _ = (vx_path, vy_path, spm_image, next_timestep_data, max_depth, dem_id)
+        elif len(out) == 13:
             # 新格式：包含 next_timestep_data
             flood_image, vx_image, vy_image, dem_image, binary_mask, vx_binary_mask, vy_binary_mask, rainfall, image_path, vx_path, vy_path, spm_image, next_timestep_data = out
             # Dataset returns single-channel flood/vx/vy; concat to form 3-channel input [B,3,H,W]
@@ -133,7 +156,14 @@ def compute_batch(ckpt_opt, corrupt_type, corrupt_method, out):
             # mask used by some sampling routines (keep the flood binary mask)
             mask = binary_mask
             # y / label: use rainfall sequence (convert to tensor)
-            y = torch.tensor(rainfall, dtype=torch.long) if not torch.is_tensor(rainfall) else rainfall
+            # rainfall 已經是批次張量 [B, 24]，直接處理
+            if not torch.is_tensor(rainfall):
+                y = torch.tensor(rainfall, dtype=torch.long)
+            else:
+                y = rainfall.long()
+            # 確保是 2D: [B, 24]
+            if y.dim() == 1:
+                y = y.unsqueeze(0)
             y = (y // 5).clamp(min=0, max=99).to(opt.device)
             image_name = image_path
             _ = (vx_path, vy_path, spm_image, next_timestep_data)
@@ -151,9 +181,14 @@ def compute_batch(ckpt_opt, corrupt_type, corrupt_method, out):
             # mask used by some sampling routines (keep the flood binary mask)
             mask = binary_mask
             # y / label: use rainfall sequence (convert to tensor)
-            # rainfall values are stored as multiples of 5 (e.g., 0,5,10...)
-            # convert to token ids by dividing by 5 and clamp to vocab range [0,99]
-            y = torch.tensor(rainfall, dtype=torch.long)
+            # rainfall 已經是批次張量 [B, 24]，直接處理
+            if not torch.is_tensor(rainfall):
+                y = torch.tensor(rainfall, dtype=torch.long)
+            else:
+                y = rainfall.long()
+            # 確保是 2D: [B, 24]
+            if y.dim() == 1:
+                y = y.unsqueeze(0)
             y = (y // 5).clamp(min=0, max=99).to(opt.device)
             image_name = image_path
             _ = (vx_path, vy_path, spm_image)
@@ -282,11 +317,11 @@ def main(opt):
             # 分別對每個通道進行反正規化
             if rec.shape[0] >= 3:
                  # depth channel
-                 depth_rec = rec[0:1] * 0.0391 + 0.987
+                 depth_rec = rec[0:1] * 0.0405 + 0.987
                  # vx channel
-                 vx_rec = rec[1:2] * 0.0932 + 0.552
+                 vx_rec = rec[1:2] * 0.0780 + 0.561
                  # vy channel
-                 vy_rec = rec[2:3] * 0.0818 + 0.489
+                 vy_rec = rec[2:3] * 0.0789 + 0.495
 
             # Save each channel separately: h (depth), vx, vy
             path_base = image_name[i].split("\\")[-1]
@@ -359,7 +394,7 @@ if __name__ == '__main__':
     # sample
     parser.add_argument("--batch-size",     type=int,  default=30)
     parser.add_argument("--sampling-method", type=str, default='euler-maruyama', help="sampling method")
-    parser.add_argument("--ckpt",           type=str,  default='C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\results\\flood-single-b128-sde-norm-novar-rand03-PY',        help="the checkpoint name from which we wish to sample")
+    parser.add_argument("--ckpt",           type=str,  default='C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\results\\flood-single-b128-sde-norm-novar-rand04',        help="the checkpoint name from which we wish to sample")
     parser.add_argument("--nfe",            type=int,  default=10,        help="sampling steps")
     parser.add_argument("--clip-denoise",   action="store_true",            help="clamp predicted image to [-1,1] at each")
     parser.add_argument("--use-fp16",       action="store_true",            help="use fp16 network weight for faster sampling")

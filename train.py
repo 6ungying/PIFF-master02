@@ -45,7 +45,7 @@ def create_training_options():
     # --------------- basic ---------------
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed",           type=int,   default=0)
-    parser.add_argument("--name",           type=str,   default='flood-single-b128-sde-norm-novar-rand03-PY',        help="experiment ID")
+    parser.add_argument("--name",           type=str,   default='flood-single-b128-sde-norm-novar-rand04',        help="experiment ID")
     parser.add_argument("--ckpt",           type=str,   default=None,        help="resumed checkpoint name")
     parser.add_argument("--gpu",            type=int,   default=None,        help="set only if you wish to run on a particular device; use -1 for CPU")
     parser.add_argument("--n-gpu-per-node", type=int,   default=1,           help="number of gpu on each node")
@@ -86,7 +86,7 @@ def create_training_options():
     parser.add_argument("--ema",            type=float, default=0.999)
 
     # --------------- physics loss ---------------
-    parser.add_argument("--use-physics",    action="store_true", default=True,  help="enable physics-informed loss")
+    parser.add_argument("--use-physics",    action="store_true", default=False,  help="enable physics-informed loss")
     parser.add_argument("--physics-weight", type=float, default=1.0,         help="weight for physics loss")
     parser.add_argument("--dx",             type=float, default=20.0,        help="spatial resolution in x direction (meters)")
     parser.add_argument("--dy",             type=float, default=20.0,        help="spatial resolution in y direction (meters)")

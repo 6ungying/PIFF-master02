@@ -153,21 +153,42 @@ class Runner(object):
         # Initialize physics loss if enabled (質量守恆方程)
         if getattr(opt, 'use_physics', False):
             try:
-                # 初始化質量守恆物理損失
+                # 初始化質量守恆物理損失 (精簡版本)
+                # 
+                # 全局轉換係數 (從 maxmin_duv.csv 計算):
+                # - 最大流速: 8.30 m/s (terrain 35, Vx)
+                # - pixel_to_mps = 8.30 / 125 = 0.066369
+                # - 涵蓋所有 49 個地形的流速範圍
+                # 
+                # 深度轉換:
+                # - 使用動態 max_depth 參數（每個 DEM 不同）
+                # - 範圍: 1.58m (terrain 60) ~ 8.77m (terrain 57)
+                # 
                 self.physics_loss = PhysicsInformedLoss(
                     dx=getattr(opt, 'dx', 20.0),
                     dy=getattr(opt, 'dy', 20.0),
-                    dt=getattr(opt, 'dt', 3600.0)  # 1小時 = 3600秒
+                    dt=getattr(opt, 'dt', 3600.0),  # 1小時 = 3600秒
+                    # 標準化參數 (從 mixture.py)
+                    h_mean=0.986,
+                    h_std=0.0405,
+                    u_mean=0.561,  # Vx 的 mean
+                    u_std=0.078,   # Vx 的 std
+                    v_mean=0.495,  # Vy 的 mean
+                    v_std=0.0789,  # Vy 的 std
+                    # 全局流速轉換係數 (涵蓋所有地形)
+                    pixel_to_mps=0.066369,  # ±125 像素 = ±8.30 m/s
                 )
                 self.physics_loss.to(opt.device)
                 self.physics_weight = getattr(opt, 'physics_weight', 1.0)
-                log.info(f"[Physics] Enabled mass conservation loss with weight={self.physics_weight}")
+                log.info(f"[Physics] [OK] 質量守恆損失已啟用 (weight={self.physics_weight})")
+                log.info(f"[Physics] 全局流速轉換: ±125 像素 = ±8.30 m/s (涵蓋 49 個地形)")
+                log.info(f"[Physics] 深度使用動態 max_depth 參數 (範圍: 1.58-8.77m)")
             except Exception as e:
-                log.error(f"[Physics] Failed to initialize PhysicsInformedLoss: {e}")
+                log.error(f"[Physics] 初始化失敗: {e}")
                 self.physics_loss = None
         else:
             self.physics_loss = None
-            log.info("[Physics] Physics-informed loss disabled")
+            log.info("[Physics] 物理損失未啟用")
 
         self.log = log
 
@@ -319,7 +340,9 @@ class Runner(object):
             vx_img_name,
             vy_img_name,
             spm,         # 你的 SPM 條件
-            next_timestep_data  # 下一時間步資料 (用於物理損失)
+            next_timestep_data,  # 下一時間步資料 (用於物理損失)
+            max_depth,   # [N,] 每個樣本的最大深度 (米) - 從 CSV 讀取
+            dem_id       # [N,] 地形 ID (用於追蹤)
         ) = next(loader)
 
         # 如果 next_timestep_data 為 None，表示沒有下一時間步（例如最後一筆資料）
@@ -398,7 +421,7 @@ class Runner(object):
                 mask = self.cond_stage_model(mask)
 
         # 目前先讓 next_timestep_data = None，物理 loss 之後再補
-        return x0, x1, mask, y, cond, spm, next_timestep_data
+        return x0, x1, mask, y, cond, spm, next_timestep_data, max_depth, dem_id
 
 
     def train(self, opt, train_dataset, val_dataset, corrupt_method):
@@ -510,7 +533,7 @@ class Runner(object):
 
             for _ in range(n_inner_loop):
                 # ===== sample boundary pair =====
-                x0, x1, mask, y, cond, spm, next_timestep_data = self.sample_batch(opt, train_loader, corrupt_method)
+                x0, x1, mask, y, cond, spm, next_timestep_data, max_depth, dem_id = self.sample_batch(opt, train_loader, corrupt_method)
 
                 # ===== compute loss =====
                 if opt.timestep_importance == 'continuous':
@@ -614,12 +637,23 @@ class Runner(object):
                                     else:
                                         rainfall_t = torch.tensor(0.0, device=pred_h_t.device)
 
-                                    # 計算質量守恆物理損失（只傳入 h_t+1，不需要 u_t+1, v_t+1）
+                                    # 取得該樣本的 max_depth (從 dataset 傳入)
+                                    sample_max_depth = None
+                                    if max_depth is not None:
+                                        if torch.is_tensor(max_depth):
+                                            sample_max_depth = max_depth[idx:idx+1]  # [1,]
+                                        elif isinstance(max_depth, (list, tuple)):
+                                            sample_max_depth = torch.tensor([max_depth[idx]], device=pred_h_t.device, dtype=pred_h_t.dtype)
+                                        else:
+                                            sample_max_depth = torch.tensor([max_depth], device=pred_h_t.device, dtype=pred_h_t.dtype)
+
+                                    # 計算質量守恆物理損失（傳入 max_depth）
                                     physics_loss_single, phys_summary_single = self.physics_loss(
                                         pred_h_t, pred_u_t, pred_v_t,  # 時間 t 的狀態
                                         pred_h_t1,                      # 時間 t+1 的水深
                                         rainfall_t,                     # 降雨強度
-                                        mask=phys_mask
+                                        mask=phys_mask,
+                                        max_depth=sample_max_depth      # 每個 DEM 的最大深度 (米)
                                     )
 
                                     # 累加物理損失 (平均多個樣本)

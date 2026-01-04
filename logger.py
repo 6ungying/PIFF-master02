@@ -11,6 +11,17 @@ import logging
 from rich.console import Console
 from rich.logging import RichHandler
 
+# 自訂 RichHandler 來抑制 Unicode 錯誤
+class SafeRichHandler(RichHandler):
+    def handleError(self, record):
+        # 忽略 UnicodeEncodeError，不顯示錯誤訊息
+        import sys
+        ei = sys.exc_info()
+        if ei[0] == UnicodeEncodeError:
+            pass  # 靜默忽略
+        else:
+            super().handleError(record)
+
 def get_time(sec):
     h = int(sec//3600)
     m = int((sec//60)%60)
@@ -50,8 +61,8 @@ class Logger(object):
                 datefmt="[%X]",
                 force=True,
                 handlers=[
-                    RichHandler(show_path=False),
-                    RichHandler(console=file_console, show_path=False)
+                    SafeRichHandler(show_path=False),  # 使用自訂的 SafeRichHandler
+                    SafeRichHandler(console=file_console, show_path=False)
                 ],
             )
             # https://stackoverflow.com/questions/31521859/python-logging-module-time-since-last-log

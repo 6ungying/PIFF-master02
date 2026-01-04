@@ -22,7 +22,7 @@ def custom_collate_fn(batch):
     自訂 collate 函數來處理包含 None 的 next_timestep_data
     batch: list of tuples from dataset.__getitem__
     每個 tuple: (flood, vx, vy, dem, mask_flood, mask_vx, mask_vy, rainfall, 
-                 img_path, vx_path, vy_path, spm, next_timestep_data)
+                 img_path, vx_path, vy_path, spm, next_timestep_data, max_depth, dem_id)
     """
     # 分離出各個欄位
     flood_imgs = []
@@ -38,15 +38,24 @@ def custom_collate_fn(batch):
     vy_paths = []
     spms = []
     next_timestep_datas = []
+    max_depths = []
+    dem_ids = []
     
     for item in batch:
-        if len(item) == 13:  # 新格式：包含 next_timestep_data
+        if len(item) == 15:  # 新格式：包含 next_timestep_data, max_depth, dem_id
+            (flood, vx, vy, dem, mask_flood, mask_vx, mask_vy, 
+             rainfall, img_path, vx_path, vy_path, spm, next_data, max_depth, dem_id) = item
+        elif len(item) == 13:  # 舊格式：包含 next_timestep_data
             (flood, vx, vy, dem, mask_flood, mask_vx, mask_vy, 
              rainfall, img_path, vx_path, vy_path, spm, next_data) = item
-        elif len(item) == 12:  # 舊格式：沒有 next_timestep_data
+            max_depth = 4.0  # 預設值
+            dem_id = -1  # 未知
+        elif len(item) == 12:  # 最舊格式：沒有 next_timestep_data
             (flood, vx, vy, dem, mask_flood, mask_vx, mask_vy, 
              rainfall, img_path, vx_path, vy_path, spm) = item
             next_data = None
+            max_depth = 4.0
+            dem_id = -1
         else:
             raise ValueError(f"Unexpected item length: {len(item)}")
         
@@ -63,6 +72,8 @@ def custom_collate_fn(batch):
         vy_paths.append(vy_path)
         spms.append(spm)
         next_timestep_datas.append(next_data)  # 保留 None 或 tuple
+        max_depths.append(max_depth)
+        dem_ids.append(dem_id)
     
     # Stack tensors
     flood_batch = torch.stack(flood_imgs)
@@ -83,11 +94,15 @@ def custom_collate_fn(batch):
     
     spm_batch = torch.stack(spms)
     
+    # 處理 max_depths 和 dem_ids
+    max_depth_batch = torch.tensor(max_depths, dtype=torch.float32)
+    dem_id_batch = torch.tensor(dem_ids, dtype=torch.long)
+    
     # next_timestep_datas 保持為 list (可能包含 None)
     return (flood_batch, vx_batch, vy_batch, dem_batch,
             mask_flood_batch, mask_vx_batch, mask_vy_batch,
             rainfall_batch, img_paths, vx_paths, vy_paths, spm_batch,
-            next_timestep_datas)  # 作為 tuple 返回
+            next_timestep_datas, max_depth_batch, dem_id_batch)  # 15 項
 
 def setup_loader(dataset, batch_size, num_workers=4):
     loader = DataLoaderX(

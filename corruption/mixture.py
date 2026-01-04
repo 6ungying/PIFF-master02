@@ -161,6 +161,17 @@ class floodDataset(Dataset):
 
         self.dem_stat = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\dem_png\\elevation_stats.csv'
         self.dem_stat = pd.read_csv(self.dem_stat)
+        
+        # ===== 整合 CSV 讀取：載入地形深度數據 =====
+        # 從 maxmin_duv.csv 讀取每個地形的最大深度（用於物理損失）
+        maxmin_csv_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\maxmin_duv.csv'
+        if os.path.exists(maxmin_csv_path):
+            terrain_df = pd.read_csv(maxmin_csv_path)
+            self.terrain_depths = dict(zip(terrain_df['terrain'].astype(int), terrain_df['depth_max']))
+            print(f"[Dataset] [OK] Loaded terrain depths from CSV: {len(self.terrain_depths)} terrains")
+        else:
+            self.terrain_depths = {}
+            print(f"[Dataset] [WARNING] maxmin_duv.csv not found, using default depth 4.0m")
         # self.dem = cv2.imread(dem_path)
         # self.dem = cv2.cvtColor(self.dem, cv2.COLOR_BGR2GRAY)
         # self.dem = cv2.cvtColor(self.dem, cv2.COLOR_GRAY2BGR)
@@ -384,6 +395,10 @@ class floodDataset(Dataset):
         spm = self.spm[index]
         dem_path = self.__find_dem_image(cell_position)
         
+        # ===== 獲取地形深度（用於物理損失）=====
+        dem_id = cell_position[0]
+        max_depth = self.terrain_depths.get(dem_id, 4.0)  # 預設 4.0m
+        
         # 讀取 DEM 並檢查是否成功
         dem_image = cv2.imread(dem_path, cv2.IMREAD_UNCHANGED)
         if dem_image is None:
@@ -466,16 +481,18 @@ class floodDataset(Dataset):
 
         # Normalize
         dem_image = (dem_image - 0.18) / 0.22
-        flood_image = (flood_image - 0.98) / 0.039
-        vx_image = (vx_image - 0.552) / 0.093
-        vy_image = (vy_image - 0.489) / 0.0818
+        flood_image = (flood_image - 0.986) / 0.0405
+        vx_image = (vx_image - 0.562) / 0.078
+        vy_image = (vy_image - 0.495) / 0.0789
         
         # Get next timestep data
         next_data = self.get_next_timestep_data(cell_position[0], cell_position[1], cell_position[2])
 
+        # ===== 回傳數據（加入 max_depth 和 dem_id）=====
         return (flood_image, vx_image, vy_image, dem_image, 
                 flood_binary_mask, vx_binary_mask, vy_binary_mask, 
-                rainfall, flood_path, vx_path, vy_path, spm_image, next_data)
+                rainfall, flood_path, vx_path, vy_path, spm_image, next_data,
+                max_depth, dem_id)  # ← 新增：最大深度和地形編號
 
 class singleDEMFloodDataset(Dataset):
     def __init__(self, opt, val=False, test=False):
