@@ -113,124 +113,135 @@ def get_recon_imgs_fn(opt, nfe):
     return recon_imgs_fn
 
 def compute_batch(ckpt_opt, corrupt_type, corrupt_method, out):
-    # Support multiple dataset output formats. Some datasets (e.g. singleDEMFloodDataset)
-    # return a long tuple: flood_image, vx_image, vy_image, dem_image, binary_mask,
-    # vx_binary_mask, vy_binary_mask, rainfall, image_path, vx_path, vy_path, spm_image, next_timestep_data
-    # Map those into the expected return signature used by the sampling loop.
+    # [MODIFIED] 處理多種 dataset 回傳格式,支援 SPM 和 CA4D
+    # 目標: 提取 corrupt_img, mask, y, spm, ca4d
+    
+    spm = None   # 初始化
+    ca4d = None  # 初始化
+    
     if isinstance(out, (list, tuple)) and len(out) >= 10:
-        # Handle the singleDEMFloodDataset / mixture style
-        # Unpack conservatively from the end to support 12-item (舊), 13-item, 和 15-item (最新) tuples
-        if len(out) == 15:
-            # 最新格式：包含 next_timestep_data, max_depth, dem_id (從 custom_collate_fn)
+        if len(out) == 16:
+            # [LATEST FORMAT - DUAL MODEL] 包含 spm_image, ca4d_image, next_timestep_data, max_depth, dem_id
             (flood_image, vx_image, vy_image, dem_image, binary_mask, vx_binary_mask, 
-             vy_binary_mask, rainfall, image_path, vx_path, vy_path, spm_image, 
+             vy_binary_mask, rainfall, image_path, vx_path, vy_path, spm_image, ca4d_image, 
              next_timestep_data, max_depth, dem_id) = out
-            # Dataset returns single-channel flood/vx/vy; concat to form 3-channel input [B,3,H,W]
+            
+            # 1. 構建 Condition (x1): 3 Channel [Flood, Vx, Vy]
             try:
                 corrupt_img = torch.cat([flood_image, vx_image, vy_image], dim=1)
             except Exception:
                 corrupt_img = flood_image
+            
             x1 = corrupt_img.to(opt.device)
-            mask = binary_mask
-            # rainfall 已經是批次張量 [B, 24]
+            
+            # 2. Mask: 強制設為 None (全圖預測)
+            mask = None 
+            
+            # 3. Label (Rainfall)
             if not torch.is_tensor(rainfall):
                 y = torch.tensor(rainfall, dtype=torch.long)
             else:
                 y = rainfall.long()
-            # 確保是 2D: [B, 24]
             if y.dim() == 1:
                 y = y.unsqueeze(0)
             y = (y // 5).clamp(min=0, max=99).to(opt.device)
+            
             image_name = image_path
-            _ = (vx_path, vy_path, spm_image, next_timestep_data, max_depth, dem_id)
+            
+            # 4. SPM Guidance (可能為 None)
+            if spm_image is not None:
+                spm = spm_image.to(opt.device)
+            
+            # 5. CA4D Guidance (可能為 None)
+            if ca4d_image is not None:
+                ca4d = ca4d_image.to(opt.device)
+            
+            _ = (vx_path, vy_path, next_timestep_data, max_depth, dem_id)
+        
+        elif len(out) == 15:
+            # [LEGACY FORMAT - CA4D ONLY] 包含 ca4d_image, next_timestep_data, max_depth, dem_id
+            (flood_image, vx_image, vy_image, dem_image, binary_mask, vx_binary_mask, 
+             vy_binary_mask, rainfall, image_path, vx_path, vy_path, ca4d_image, 
+             next_timestep_data, max_depth, dem_id) = out
+            
+            # 1. 構建 Condition (x1): 3 Channel [Flood, Vx, Vy]
+            try:
+                corrupt_img = torch.cat([flood_image, vx_image, vy_image], dim=1)
+            except Exception:
+                corrupt_img = flood_image
+            
+            x1 = corrupt_img.to(opt.device)
+            
+            # 2. Mask: 強制設為 None (全圖預測)
+            mask = None 
+            
+            # 3. Label (Rainfall)
+            if not torch.is_tensor(rainfall):
+                y = torch.tensor(rainfall, dtype=torch.long)
+            else:
+                y = rainfall.long()
+            if y.dim() == 1:
+                y = y.unsqueeze(0)
+            y = (y // 5).clamp(min=0, max=99).to(opt.device)
+            
+            image_name = image_path
+            
+            # 4. CA4D Guidance (處理 None 的情況)
+            ca4d = ca4d_image.to(opt.device) if ca4d_image is not None else None
+            
+            _ = (vx_path, vy_path, next_timestep_data, max_depth, dem_id)
+
         elif len(out) == 13:
-            # 新格式：包含 next_timestep_data
+            # [LEGACY FORMAT - SPM ONLY] 舊版 mixture
             flood_image, vx_image, vy_image, dem_image, binary_mask, vx_binary_mask, vy_binary_mask, rainfall, image_path, vx_path, vy_path, spm_image, next_timestep_data = out
-            # Dataset returns single-channel flood/vx/vy; concat to form 3-channel input [B,3,H,W]
+            
             try:
                 corrupt_img = torch.cat([flood_image, vx_image, vy_image], dim=1)
             except Exception:
-                # fallback if shapes unexpected
                 corrupt_img = flood_image
+            
             x1 = corrupt_img.to(opt.device)
-            # mask used by some sampling routines (keep the flood binary mask)
-            mask = binary_mask
-            # y / label: use rainfall sequence (convert to tensor)
-            # rainfall 已經是批次張量 [B, 24]，直接處理
-            if not torch.is_tensor(rainfall):
-                y = torch.tensor(rainfall, dtype=torch.long)
-            else:
-                y = rainfall.long()
-            # 確保是 2D: [B, 24]
-            if y.dim() == 1:
-                y = y.unsqueeze(0)
-            y = (y // 5).clamp(min=0, max=99).to(opt.device)
-            image_name = image_path
-            _ = (vx_path, vy_path, spm_image, next_timestep_data)
-        elif len(out) == 12:
-            # 舊格式：沒有 next_timestep_data
-            flood_image, vx_image, vy_image, dem_image, binary_mask, vx_binary_mask, vy_binary_mask, rainfall, image_path, vx_path, vy_path, spm_image = out
-            # Dataset returns single-channel flood/vx/vy; concat to form 3-channel input [B,3,H,W]
-            # flood_image, vx_image, vy_image are already batched tensors
-            try:
-                corrupt_img = torch.cat([flood_image, vx_image, vy_image], dim=1)
-            except Exception:
-                # fallback if shapes unexpected
-                corrupt_img = flood_image
-            x1 = corrupt_img.to(opt.device)
-            # mask used by some sampling routines (keep the flood binary mask)
-            mask = binary_mask
-            # y / label: use rainfall sequence (convert to tensor)
-            # rainfall 已經是批次張量 [B, 24]，直接處理
-            if not torch.is_tensor(rainfall):
-                y = torch.tensor(rainfall, dtype=torch.long)
-            else:
-                y = rainfall.long()
-            # 確保是 2D: [B, 24]
-            if y.dim() == 1:
-                y = y.unsqueeze(0)
-            y = (y // 5).clamp(min=0, max=99).to(opt.device)
-            image_name = image_path
-            _ = (vx_path, vy_path, spm_image)
-        elif len(out) == 6:
-            # older mixture dataset: clean_img, corrupt_img, binary_mask, y, image_name, _
-            clean_img, corrupt_img, binary_mask, y, image_name, _ = out
-            x1 = corrupt_img.to(opt.device)
-            # ensure y is LongTensor token ids
-            if not torch.is_tensor(y):
-                y = torch.tensor(y, dtype=torch.long)
-            y = y.to(opt.device).long()
             mask = None
+            
+            if not torch.is_tensor(rainfall):
+                y = torch.tensor(rainfall, dtype=torch.long)
+            else:
+                y = rainfall.long()
+            if y.dim() == 1:
+                y = y.unsqueeze(0)
+            y = (y // 5).clamp(min=0, max=99).to(opt.device)
+            
+            image_name = image_path
+            
+            # SPM Guidance (1-channel)
+            if spm_image is not None:
+                spm = spm_image.to(opt.device)
+
+            _ = (vx_path, vy_path, spm_image, next_timestep_data)
+            
         else:
-            # Fallback: try to interpret first items as clean_img, corrupt_img, mask-like
-            try:
-                clean_img = out[0]
-                corrupt_img = out[1]
-                y = out[3]
-                image_name = out[4] if len(out) > 4 else None
-                x1 = corrupt_img.to(opt.device)
-                mask = None
-                _ = None
-            except Exception:
-                raise ValueError(f"Unsupported dataset output format with length={len(out)}")
+             # Fallback
+             raise ValueError(f"Unsupported dataset output format with length={len(out)}")
+
     else:
-        # Standard case: (clean_img, y)
+        # Standard ImageNet case (not used here)
         clean_img, y = out
         mask = None
         corrupt_img = corrupt_method(clean_img.to(opt.device))
         x1 = corrupt_img.to(opt.device)
+        image_name = None
 
     cond = x1.detach() if ckpt_opt.cond_x1 else None
-    if ckpt_opt.add_x1_noise: # only for decolor
+    if ckpt_opt.add_x1_noise: 
         x1 = x1 + torch.randn_like(x1)
 
-    return corrupt_img, x1, mask, cond, y, image_name, _
+    # [MODIFIED] 回傳 SPM 和 CA4D
+    return corrupt_img, x1, mask, cond, y, image_name, spm, ca4d, _
 
 @torch.no_grad()
 def main(opt):
     log = Logger(opt.global_rank, ".log")
 
-    # resolve checkpoint folder: accept either a results/<name> or a full path
     ckpt_arg = Path(opt.ckpt)
     if ckpt_arg.is_absolute() and ckpt_arg.exists():
         ckpt_dir = ckpt_arg
@@ -240,25 +251,25 @@ def main(opt):
         ckpt_dir = ckpt_arg
     else:
         log.info(f"Checkpoint folder not found: tried '{ckpt_arg}' and 'results/{opt.ckpt}'")
-        raise FileNotFoundError(f"Checkpoint folder not found: '{opt.ckpt}'. Make sure the folder exists under 'results/' or pass a full path.")
+        raise FileNotFoundError(f"Checkpoint folder not found: '{opt.ckpt}'.")
 
-    # get (default) ckpt option
     ckpt_opt = ckpt_util.build_ckpt_option(opt, log, ckpt_dir)
     corrupt_type = ckpt_opt.corrupt
     nfe = opt.nfe or ckpt_opt.interval-1
 
-    # 處理測試 DEM 列表
+    # 如果命令列有指定 test_dem_list，使用它；否則從 ckpt_opt 繼承
     if opt.test_dem_list:
         opt.test_dem_list = [int(x.strip()) for x in opt.test_dem_list.split(',')]
-        log.info(f"Using test DEMs: {opt.test_dem_list}")
+        log.info(f"Using test DEMs from command line: {opt.test_dem_list}")
+    elif hasattr(ckpt_opt, 'test_dem_list') and ckpt_opt.test_dem_list:
+        opt.test_dem_list = ckpt_opt.test_dem_list
+        log.info(f"Using test DEMs from training config: {opt.test_dem_list}")
     else:
         opt.test_dem_list = None
+        log.info("No test_dem_list specified, using single-DEM mode")
 
-    # build corruption method
     corrupt_method = build_corruption(opt, log, corrupt_type=corrupt_type)
 
-    # build imagenet val dataset
-    # 如果有指定測試 DEM，使用 floodDataset；否則使用 singleDEMFloodDataset
     if opt.test_dem_list:
         log.info("Using floodDataset for multi-DEM testing")
         val_dataset = floodDataset(opt, test=True)
@@ -267,54 +278,42 @@ def main(opt):
         val_dataset = singleDEMFloodDataset(opt, test=True)
     n_samples = len(val_dataset)
 
-    # build dataset per gpu and loader
     from i2sb.util import custom_collate_fn
     subset_dataset = build_subset_per_gpu(opt, val_dataset, log)
     val_loader = DataLoader(subset_dataset,
-        batch_size=opt.batch_size, shuffle=False, pin_memory=True, num_workers=1, drop_last=False,
-        collate_fn=custom_collate_fn,  # 使用自訂 collate 函數
+        batch_size=opt.batch_size, shuffle=False, pin_memory=True, num_workers=0, drop_last=False,
+        collate_fn=custom_collate_fn, 
     )
 
-    # build runner
-    # ckpt_opt.ot_ode = True
     runner = Runner(ckpt_opt, log, save_opt=False)
 
-    # handle use_fp16 for ema
     if opt.use_fp16:
-        runner.ema.copy_to() # copy weight from ema to net
+        runner.ema.copy_to() 
         runner.net.diffusion_model.convert_to_fp16()
-        runner.ema = ExponentialMovingAverage(runner.net.parameters(), decay=0.99) # re-init ema with fp16 weight
+        runner.ema = ExponentialMovingAverage(runner.net.parameters(), decay=0.99) 
 
-    # create save folder
     recon_imgs_fn = get_recon_imgs_fn(opt, nfe)
     log.info(f"Recon images will be saved to {recon_imgs_fn}!")
 
-    recon_imgs = []
-    ys = []
-    num = 0
     for loader_itr, out in enumerate(val_loader):
 
-        corrupt_img, x1, mask, cond, y, image_name, _ = compute_batch(ckpt_opt, corrupt_type, corrupt_method, out)
+        # [MODIFIED] 解包包含 SPM 和 CA4D 的結果
+        corrupt_img, x1, mask, cond, y, image_name, spm, ca4d, _ = compute_batch(ckpt_opt, corrupt_type, corrupt_method, out)
         
+        # [MODIFIED] 只傳入 CA4D 參數 (不傳 SPM,因為 ddpm_sampling 不支援)
         xs, _ = runner.ddpm_sampling(
-            ckpt_opt, x1, y, mask=mask, cond=cond, clip_denoise=opt.clip_denoise, nfe=nfe, verbose=opt.n_gpu_per_node==1, eval=True, ode_method=opt.sampling_method,
+            ckpt_opt, x1, y, mask=mask, cond=cond, clip_denoise=opt.clip_denoise, nfe=nfe, 
+            verbose=opt.n_gpu_per_node==1, eval=True, ode_method=opt.sampling_method,
+            ca4d=ca4d 
         )
-        recon_img = xs[:, 0, ...].to(opt.device)  # [batch, channels, height, width]
-        # recon_img = xs
+        recon_img = xs[:, 0, ...].to(opt.device) 
 
         assert recon_img.shape == corrupt_img.shape
 
-        # if loader_itr == 0 and opt.global_rank == 0: # debug
-        #     os.makedirs(".debug", exist_ok=True)
-        #     # tu.save_image((corrupt_img+1)/2, ".debug/corrupt.png")
-        #     # tu.save_image((recon_img+1)/2, ".debug/recon.png")
-        #     log.info("Saved debug images!")
-
         for i in range(len(recon_img)):
-            rec = recon_img[i]  # [-1, 1]
-            #rec = (rec + 1) / 2  # [0, 1]
+            rec = recon_img[i]
 
-            # 分別對每個通道進行反正規化
+            # [MODIFIED] Denormalization Logic
             if rec.shape[0] >= 3:
                  # depth channel
                  depth_rec = rec[0:1] * 0.0405 + 0.987
@@ -323,57 +322,30 @@ def main(opt):
                  # vy channel
                  vy_rec = rec[2:3] * 0.0789 + 0.495
 
-            # Save each channel separately: h (depth), vx, vy
             path_base = image_name[i].split("\\")[-1]
             if path_base.endswith('.png'):
                 path_base = path_base[:-4]
             
-            if rec.shape[0] >= 3:  # Ensure we have 3 channels
-                # Extract rf_d_hr_00 pattern and replace 'd' with specific type
-                # Original format: "RF01_d_001_00" -> desired: "RF01_depth_001_00"
-                
-                # Save depth (h) - replace 'd' with 'depth'
+            # [MODIFIED] Save logic for 3 channels
+            if rec.shape[0] >= 3: 
+                # Save depth
                 depth_name = path_base.replace('_d_', '_d_') + '.png'
                 depth_path = recon_imgs_fn.parent / f"recon_{depth_name}"
                 tu.save_image(depth_rec, depth_path)
                 
-                # Save vx - replace 'd' with 'vx' 
+                # Save vx
                 vx_name = path_base.replace('_d_', '_vx_') + '.png'
                 vx_path = recon_imgs_fn.parent / f"recon_{vx_name}"
                 tu.save_image(vx_rec, vx_path)
                 
-                # Save vy - replace 'd' with 'vy'
+                # Save vy
                 vy_name = path_base.replace('_d_', '_vy_') + '.png'
                 vy_path = recon_imgs_fn.parent / f"recon_{vy_name}"
                 tu.save_image(vy_rec, vy_path)
             else:
-                # Fallback: save as single image
+                # Fallback
                 save_path = recon_imgs_fn.parent / f"recon_{path_base}.png"
                 tu.save_image(rec, save_path)
-
-        # [-1,1]
-    #     gathered_recon_img = collect_all_subset(recon_img, log)
-    #     recon_imgs.append(gathered_recon_img)
-
-    #     y = y.to(opt.device)
-    #     gathered_y = collect_all_subset(y, log)
-    #     ys.append(gathered_y)
-
-    #     num += len(gathered_recon_img)
-    #     log.info(f"Collected {num} recon images!")
-    #     dist.barrier()
-
-    # del runner
-
-    # arr = torch.cat(recon_imgs, axis=0)[:n_samples]
-    # label_arr = torch.cat(ys, axis=0)[:n_samples]
-
-    # if opt.global_rank == 0:
-    #     torch.save({"arr": arr, "label_arr": label_arr}, recon_imgs_fn)
-    #     log.info(f"Save at {recon_imgs_fn}")
-    # dist.barrier()
-
-    # log.info(f"Sampling complete! Collect recon_imgs={arr.shape}, ys={label_arr.shape}")
 
 
 if __name__ == '__main__':
@@ -394,7 +366,7 @@ if __name__ == '__main__':
     # sample
     parser.add_argument("--batch-size",     type=int,  default=30)
     parser.add_argument("--sampling-method", type=str, default='euler-maruyama', help="sampling method")
-    parser.add_argument("--ckpt",           type=str,  default='C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\results\\flood-single-b128-sde-norm-novar-rand04',        help="the checkpoint name from which we wish to sample")
+    parser.add_argument("--ckpt",           type=str,  default='C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\results\\flood-single-b128-sde-norm-novar-ca4d',        help="the checkpoint name from which we wish to sample")
     parser.add_argument("--nfe",            type=int,  default=10,        help="sampling steps")
     parser.add_argument("--clip-denoise",   action="store_true",            help="clamp predicted image to [-1,1] at each")
     parser.add_argument("--use-fp16",       action="store_true",            help="use fp16 network weight for faster sampling")
@@ -406,9 +378,6 @@ if __name__ == '__main__':
         device="cuda",
     )
     opt.update(vars(arg))
-
-    # one-time download: ADM checkpoint
-    # download_ckpt("data/")
 
     set_seed(opt.seed)
 

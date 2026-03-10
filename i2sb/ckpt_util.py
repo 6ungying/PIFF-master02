@@ -211,8 +211,11 @@ def build_ckpt_option(opt, log, ckpt_path):
             ckpt_opt.interval = 1000
         if not hasattr(ckpt_opt, 'add_x1_noise'):
             ckpt_opt.add_x1_noise = False
-        if not hasattr(ckpt_opt, 'spm'):
-            ckpt_opt.spm = False
+        
+        # [MODIFIED] spm -> ca4d
+        if not hasattr(ckpt_opt, 'ca4d'):
+            ckpt_opt.ca4d = False
+            
         if not hasattr(ckpt_opt, 'beta_max'):
             ckpt_opt.beta_max = 0.1
         if not hasattr(ckpt_opt, 't0'):

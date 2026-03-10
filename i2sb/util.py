@@ -19,40 +19,49 @@ class DataLoaderX(DataLoader):
 
 def custom_collate_fn(batch):
     """
-    自訂 collate 函數來處理包含 None 的 next_timestep_data
+    自訂 collate 函數來處理包含 None 的 mask 與 next_timestep_data
     batch: list of tuples from dataset.__getitem__
-    每個 tuple: (flood, vx, vy, dem, mask_flood, mask_vx, mask_vy, rainfall, 
-                 img_path, vx_path, vy_path, spm, next_timestep_data, max_depth, dem_id)
     """
     # 分離出各個欄位
     flood_imgs = []
     vx_imgs = []
     vy_imgs = []
     dem_imgs = []
+    
     mask_floods = []
     mask_vxs = []
     mask_vys = []
+    
     rainfalls = []
     img_paths = []
     vx_paths = []
     vy_paths = []
-    spms = []
+    
+    ca4ds = [] # 改名 spm -> ca4d
+    
     next_timestep_datas = []
     max_depths = []
     dem_ids = []
     
     for item in batch:
-        if len(item) == 15:  # 新格式：包含 next_timestep_data, max_depth, dem_id
+        # 根據回傳長度解包 (支援 16, 15, 13, 12 等舊格式相容)
+        if len(item) == 16:
+            # 最新格式 (同時包含 spm_image 和 ca4d_image)
             (flood, vx, vy, dem, mask_flood, mask_vx, mask_vy, 
-             rainfall, img_path, vx_path, vy_path, spm, next_data, max_depth, dem_id) = item
-        elif len(item) == 13:  # 舊格式：包含 next_timestep_data
+             rainfall, img_path, vx_path, vy_path, spm, ca4d, next_data, max_depth, dem_id) = item
+        elif len(item) == 15:
+            # 舊格式 (含 ca4d, max_depth, dem_id)
             (flood, vx, vy, dem, mask_flood, mask_vx, mask_vy, 
-             rainfall, img_path, vx_path, vy_path, spm, next_data) = item
-            max_depth = 4.0  # 預設值
-            dem_id = -1  # 未知
-        elif len(item) == 12:  # 最舊格式：沒有 next_timestep_data
+             rainfall, img_path, vx_path, vy_path, ca4d, next_data, max_depth, dem_id) = item
+        elif len(item) == 13:
+            # 更舊格式
             (flood, vx, vy, dem, mask_flood, mask_vx, mask_vy, 
-             rainfall, img_path, vx_path, vy_path, spm) = item
+             rainfall, img_path, vx_path, vy_path, ca4d, next_data) = item
+            max_depth = 4.0
+            dem_id = -1
+        elif len(item) == 12:
+            (flood, vx, vy, dem, mask_flood, mask_vx, mask_vy, 
+             rainfall, img_path, vx_path, vy_path, ca4d) = item
             next_data = None
             max_depth = 4.0
             dem_id = -1
@@ -63,15 +72,20 @@ def custom_collate_fn(batch):
         vx_imgs.append(vx)
         vy_imgs.append(vy)
         dem_imgs.append(dem)
-        mask_floods.append(torch.from_numpy(mask_flood) if not torch.is_tensor(mask_flood) else mask_flood)
-        mask_vxs.append(torch.from_numpy(mask_vx) if not torch.is_tensor(mask_vx) else mask_vx)
-        mask_vys.append(torch.from_numpy(mask_vy) if not torch.is_tensor(mask_vy) else mask_vy)
+        
+        # [MODIFIED] Mask 處理：支援 None
+        mask_floods.append(torch.from_numpy(mask_flood) if (mask_flood is not None and not torch.is_tensor(mask_flood)) else mask_flood)
+        mask_vxs.append(torch.from_numpy(mask_vx) if (mask_vx is not None and not torch.is_tensor(mask_vx)) else mask_vx)
+        mask_vys.append(torch.from_numpy(mask_vy) if (mask_vy is not None and not torch.is_tensor(mask_vy)) else mask_vy)
+        
         rainfalls.append(rainfall)
         img_paths.append(img_path)
         vx_paths.append(vx_path)
         vy_paths.append(vy_path)
-        spms.append(spm)
-        next_timestep_datas.append(next_data)  # 保留 None 或 tuple
+        
+        ca4ds.append(ca4d)
+        
+        next_timestep_datas.append(next_data)
         max_depths.append(max_depth)
         dem_ids.append(dem_id)
     
@@ -80,29 +94,51 @@ def custom_collate_fn(batch):
     vx_batch = torch.stack(vx_imgs)
     vy_batch = torch.stack(vy_imgs)
     dem_batch = torch.stack(dem_imgs)
-    mask_flood_batch = torch.stack(mask_floods)
-    mask_vx_batch = torch.stack(mask_vxs)
-    mask_vy_batch = torch.stack(mask_vys)
     
-    # 處理 rainfall (可能是 numpy array 或 tensor)
+    # [MODIFIED] 若列表中包含 None，則 Batch 結果也為 None (避免 stack 報錯)
+    if any(m is None for m in mask_floods):
+        mask_flood_batch = None
+    else:
+        mask_flood_batch = torch.stack(mask_floods)
+
+    if any(m is None for m in mask_vxs):
+        mask_vx_batch = None
+    else:
+        mask_vx_batch = torch.stack(mask_vxs)
+
+    if any(m is None for m in mask_vys):
+        mask_vy_batch = None
+    else:
+        mask_vy_batch = torch.stack(mask_vys)
+    
+    # Rainfall
     if torch.is_tensor(rainfalls[0]):
         rainfall_batch = torch.stack(rainfalls)
     else:
-        # 先轉成 numpy array 再轉 tensor，避免警告
         import numpy as np
         rainfall_batch = torch.from_numpy(np.array(rainfalls))
     
-    spm_batch = torch.stack(spms)
+    # CA4D Stack (處理 None 的情況)
+    if all(ca4d is None for ca4d in ca4ds):
+        # 如果所有 CA4D 都是 None (測試模式),返回 None
+        ca4d_batch = None
+    elif any(ca4d is None for ca4d in ca4ds):
+        # 如果部分是 None,用零填充
+        reference_shape = next((c.shape for c in ca4ds if c is not None), None)
+        ca4ds_filled = [ca4d if ca4d is not None else torch.zeros(reference_shape) for ca4d in ca4ds]
+        ca4d_batch = torch.stack(ca4ds_filled)
+    else:
+        # 所有都是有效的 tensor
+        ca4d_batch = torch.stack(ca4ds)
     
-    # 處理 max_depths 和 dem_ids
+    # Meta data
     max_depth_batch = torch.tensor(max_depths, dtype=torch.float32)
     dem_id_batch = torch.tensor(dem_ids, dtype=torch.long)
     
-    # next_timestep_datas 保持為 list (可能包含 None)
     return (flood_batch, vx_batch, vy_batch, dem_batch,
             mask_flood_batch, mask_vx_batch, mask_vy_batch,
-            rainfall_batch, img_paths, vx_paths, vy_paths, spm_batch,
-            next_timestep_datas, max_depth_batch, dem_id_batch)  # 15 項
+            rainfall_batch, img_paths, vx_paths, vy_paths, ca4d_batch,
+            next_timestep_datas, max_depth_batch, dem_id_batch)
 
 def setup_loader(dataset, batch_size, num_workers=4):
     loader = DataLoaderX(
@@ -112,7 +148,7 @@ def setup_loader(dataset, batch_size, num_workers=4):
         pin_memory=True,
         num_workers=num_workers,
         drop_last=True,
-        collate_fn=custom_collate_fn,  # 使用自訂 collate 函數
+        collate_fn=custom_collate_fn,
     )
 
     while True:
@@ -139,7 +175,6 @@ class WandBWriter(BaseWriter):
 
     def add_image(self, step, key, image):
         if self.rank == 0:
-            # adopt from torchvision.utils.save_image
             image = image.mul(255).add_(0.5).clamp_(0, 255).permute(1, 2, 0).to("cpu", torch.uint8).numpy()
             wandb.log({key: wandb.Image(image)}, step=step)
 
@@ -166,7 +201,7 @@ class TensorBoardWriter(BaseWriter):
 def build_log_writer(opt):
     if opt.log_writer == 'wandb': return WandBWriter(opt)
     elif opt.log_writer == 'tensorboard': return TensorBoardWriter(opt)
-    else: return BaseWriter(opt) # do nothing
+    else: return BaseWriter(opt)
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)

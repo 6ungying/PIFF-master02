@@ -23,28 +23,31 @@ from ipdb import set_trace as debug
 from torch import nn
 
 class Image256Net(torch.nn.Module):
-    def __init__(self, log, noise_levels, use_fp16=False, cond=False, pretrained_adm=True, ckpt_dir="data/", spm=False):
+    # [MODIFIED] 同時支援 SPM 和 CA4D，透過參數控制
+    def __init__(self, log, noise_levels, use_fp16=False, cond=False, pretrained_adm=True, ckpt_dir="data/", spm=False, ca4d=False):
         super(Image256Net, self).__init__()
 
         # initialize model
-        # ckpt_pkl = os.path.join(ckpt_dir, I2SB_IMG256_COND_PKL if cond else I2SB_IMG256_UNCOND_PKL)
+        # 使用固定的 pickle 路徑
         ckpt_pkl = "C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\256x256_diffusion_uncond_fixedsigma.pkl"
+        
         with open(ckpt_pkl, "rb") as f:
             kwargs = pickle.load(f)
+        
         kwargs["use_fp16"] = use_fp16
         kwargs["num_channels"] = 128
         kwargs['image_size'] = 256
         kwargs['num_heads'] = 8
         kwargs["out_channels"] = 3
-        # Always use 3 channels for h, u, v (no conditional input)
+        # 網路本體接受 3 通道 (h, u, v)
         kwargs["in_channels"] = 3
-        self.cond = False  # Disable conditional input
+        
+        self.cond = False  # Disable conditional input (original i2sb cond)
         self.diffusion_model = create_model(**kwargs)
         
-        # Fix first layer to accept 3 channels instead of 2
+        # --- Fix first layer to accept 3 channels instead of 2 ---
         first_conv = self.diffusion_model.input_blocks[0][0]
         if first_conv.in_channels == 2:
-            # Create new conv layer with 3 input channels
             new_conv = torch.nn.Conv2d(
                 in_channels=3,
                 out_channels=first_conv.out_channels,
@@ -56,7 +59,7 @@ class Image256Net(torch.nn.Module):
             
             # Initialize new weights by expanding the original 2-channel weights
             with torch.no_grad():
-                old_weight = first_conv.weight  # [out_channels, 2, kernel_h, kernel_w]
+                old_weight = first_conv.weight
                 # For the third channel, use average of first two channels
                 third_channel = (old_weight[:, 0:1, :, :] + old_weight[:, 1:2, :, :]) / 2
                 new_weight = torch.cat([old_weight, third_channel], dim=1)
@@ -65,80 +68,102 @@ class Image256Net(torch.nn.Module):
                 if first_conv.bias is not None:
                     new_conv.bias.copy_(first_conv.bias)
             
-            # Replace the first layer
             self.diffusion_model.input_blocks[0][0] = new_conv
             log.info("[Net] Modified first layer to accept 3 input channels (h, u, v)")
         
         log.info(f"[Net] Initialized 3-channel network from {ckpt_pkl=}! Size={util.count_parameters(self.diffusion_model)}!")
-        
-        # load (modified) adm ckpt
-        # if pretrained_adm:
-            # ckpt_pt = os.path.join(ckpt_dir, I2SB_IMG256_COND_CKPT if cond else I2SB_IMG256_UNCOND_CKPT)
-            # out = torch.load(ckpt_pt, map_location="cpu")
-            # self.diffusion_model.load_state_dict(out)
-            # log.info(f"[Net] Loaded pretrained adm {ckpt_pt=}!")
 
         self.diffusion_model.apply(self.init_weights)
-        
         self.diffusion_model.eval()
-        # self.cond already set above during initialization
-        self.spm = spm
         
-        # Add SPM adapter if enabled
+        # [MODIFIED] 同時支援 SPM 和 CA4D
+        self.spm = spm
+        self.ca4d = ca4d
+        
+        # 互斥檢查
+        if self.spm and self.ca4d:
+            log.warning("[Net] ⚠️  Both SPM and CA4D are enabled! Only one will be used during forward pass.")
+            log.warning("[Net] Priority: CA4D > SPM (CA4D will be used if both are provided)")
+        
+        # Add SPM adapter if enabled (保留原始功能)
         if self.spm:
-            # 1x1 adapter to map 4-channel (h,u,v,spm) -> 3-channel (h,u,v)
-            # This preserves pretrained weights while allowing SPM integration
+            # 1x1 adapter: [B,4,H,W] -> [B,3,H,W]
+            # Input: x (3 channels) + spm (1 channel) = 4 channels
             self.spm_adapter = nn.Conv2d(in_channels=4, out_channels=3, kernel_size=1, stride=1, padding=0, bias=True)
             nn.init.kaiming_normal_(self.spm_adapter.weight, mode='fan_out', nonlinearity='relu')
             if self.spm_adapter.bias is not None:
                 nn.init.zeros_(self.spm_adapter.bias)
-            log.info("[Net] Added SPM adapter (4->3 channels) to integrate spatial prior maps")
+            log.info("[Net] ✅ Added SPM adapter (4->3 channels) to integrate spatial prior maps")
+        
+        # Add CA4D adapter if enabled
+        if self.ca4d:
+            # 1x1 adapter: [B,6,H,W] -> [B,3,H,W]
+            # Input: x (3 channels) + ca4d (3 channels) = 6 channels
+            self.ca4d_adapter = nn.Conv2d(in_channels=6, out_channels=3, kernel_size=1, stride=1, padding=0, bias=True)
+            
+            nn.init.kaiming_normal_(self.ca4d_adapter.weight, mode='fan_out', nonlinearity='relu')
+            if self.ca4d_adapter.bias is not None:
+                nn.init.zeros_(self.ca4d_adapter.bias)
+            log.info("[Net] ✅ Added CA4D adapter (6->3 channels) to integrate h/vx/vy guidance")
         
         self.noise_levels = noise_levels
 
-    def forward(self, x, steps, rainfall, cond=None, spm=None):
+    # [MODIFIED] 同時支援 SPM 和 CA4D
+    def forward(self, x, steps, rainfall, cond=None, spm=None, ca4d=None):
 
-        # Accept steps in several shapes: either [B] or [B,1,1,1], etc.
-        # t must be a 1-D LongTensor with length batch-size.
         t = steps.detach()
         if t.dim() > 1:
-            # collapse extra dims, keep first element per batch
             t = t.view(t.shape[0], -1)[:, 0]
-        # ensure correct dtype/device
         t = t.to(dtype=torch.long, device=x.device)
         assert t.dim() == 1 and t.shape[0] == x.shape[0]
 
-        # Conditional input disabled for 3-channel mode
-        # x = torch.cat([x, cond], dim=1) if self.cond else x
-        
-        # SPM integration with robust dimension handling
-        if self.spm and spm is not None:
-            # Sanitize spm shape/dtype to avoid dimension mismatch errors.
-            # Expected spm shape: [B,1,H,W]. Accept common alternatives and convert.
+        # [PRIORITY] CA4D > SPM (如果兩者都提供，優先使用 CA4D)
+        if self.ca4d and ca4d is not None:
+            # CA4D integration
+            if not isinstance(ca4d, torch.Tensor):
+                ca4d = torch.as_tensor(ca4d, device=x.device)
+            else:
+                ca4d = ca4d.to(device=x.device)
+
+            # 維度處理
+            if ca4d.dim() == 3:
+                ca4d = ca4d.unsqueeze(0)  # [3,H,W] -> [1,3,H,W]
+            elif ca4d.dim() == 3 and ca4d.shape[1] != 3:
+                ca4d = ca4d.unsqueeze(1).repeat(1, 3, 1, 1)
+
+            # Broadcast batch dim
+            if ca4d.shape[0] == 1 and x.shape[0] > 1:
+                ca4d = ca4d.expand(x.shape[0], -1, -1, -1)
+
+            # Ensure dtype matches
+            if ca4d.dtype != x.dtype:
+                ca4d = ca4d.to(dtype=x.dtype)
+
+            # Concat: [B,3,H,W] + [B,3,H,W] -> [B,6,H,W]
+            x = torch.cat([x, ca4d], dim=1)
+            # Adapter: [B,6,H,W] -> [B,3,H,W]
+            x = self.ca4d_adapter(x)
+            
+        elif self.spm and spm is not None:
+            # SPM integration (保留原始邏輯)
             if not isinstance(spm, torch.Tensor):
                 spm = torch.as_tensor(spm, device=x.device)
             else:
                 spm = spm.to(device=x.device)
 
-            # Handle possible shapes:
-            #  - [H, W] -> [1,1,H,W]
-            #  - [B, H, W] -> [B,1,H,W]
-            #  - [1, H, W] -> [1,1,H,W]
-            #  - [B, C, H, W] (C!=1) -> take first channel
+            # 維度處理 (SPM 是單通道)
             if spm.dim() == 2:
-                spm = spm.unsqueeze(0).unsqueeze(0)
+                spm = spm.unsqueeze(0).unsqueeze(0)  # [H,W] -> [1,1,H,W]
             elif spm.dim() == 3:
-                # ambiguous: assume [B, H, W]
                 if spm.shape[0] == x.shape[0]:
-                    spm = spm.unsqueeze(1)
+                    spm = spm.unsqueeze(1)  # [B,H,W] -> [B,1,H,W]
                 else:
-                    # treat as single sample [H,W] with missing batch dim
-                    spm = spm.unsqueeze(0).unsqueeze(0)
+                    spm = spm.unsqueeze(0).unsqueeze(0)  # [H,W] -> [1,1,H,W]
             elif spm.dim() == 4:
                 if spm.shape[1] != 1:
-                    spm = spm[:, 0:1, ...]
+                    spm = spm[:, 0:1, ...]  # Take first channel
 
-            # Broadcast batch dim if needed (e.g., spm has batch 1 but x has batch >1)
+            # Broadcast batch dim
             if spm.shape[0] == 1 and x.shape[0] > 1:
                 spm = spm.expand(x.shape[0], -1, -1, -1)
 
@@ -146,9 +171,9 @@ class Image256Net(torch.nn.Module):
             if spm.dtype != x.dtype:
                 spm = spm.to(dtype=x.dtype)
 
-            # Concat SPM as 4th channel: [B,3,H,W] + [B,1,H,W] -> [B,4,H,W]
+            # Concat: [B,3,H,W] + [B,1,H,W] -> [B,4,H,W]
             x = torch.cat([x, spm], dim=1)
-            # Use adapter to map back to 3 channels: [B,4,H,W] -> [B,3,H,W]
+            # Adapter: [B,4,H,W] -> [B,3,H,W]
             x = self.spm_adapter(x)
 
         output = self.diffusion_model(x, t, rainfall)

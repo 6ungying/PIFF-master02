@@ -45,7 +45,7 @@ def create_training_options():
     # --------------- basic ---------------
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed",           type=int,   default=0)
-    parser.add_argument("--name",           type=str,   default='flood-single-b128-sde-norm-novar-rand04',        help="experiment ID")
+    parser.add_argument("--name",           type=str,   default='flood-single-b128-sde-norm-novar-spm-mass',        help="experiment ID")
     parser.add_argument("--ckpt",           type=str,   default=None,        help="resumed checkpoint name")
     parser.add_argument("--gpu",            type=int,   default=None,        help="set only if you wish to run on a particular device; use -1 for CPU")
     parser.add_argument("--n-gpu-per-node", type=int,   default=1,           help="number of gpu on each node")
@@ -72,7 +72,11 @@ def create_training_options():
 
     # optional configs for conditional network
     parser.add_argument("--cond-x1",        action="store_true",  default=True,           help="conditional the network on degraded images")
-    parser.add_argument("--spm",          action="store_true",  default=True,           help="use SPM for conditional network")
+    
+    # [MODIFIED] 同時支援 SPM 和 CA4D (雙物理模型)
+    parser.add_argument("--spm",            action="store_true",  default=False,          help="use SPM guidance (1-channel spatial prior map)")
+    parser.add_argument("--ca4d",           action="store_true",  default=False,          help="use CA4D guidance (h, vx, vy) for conditional network")
+    
     parser.add_argument("--add-x1-noise",   action="store_true",             help="add noise to conditional network")
 
     # --------------- optimizer and loss ---------------
