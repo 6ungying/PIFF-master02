@@ -38,6 +38,7 @@ def custom_collate_fn(batch):
     vy_paths = []
     
     ca4ds = [] # 改名 spm -> ca4d
+    spms = []
     
     next_timestep_datas = []
     max_depths = []
@@ -84,6 +85,7 @@ def custom_collate_fn(batch):
         vy_paths.append(vy_path)
         
         ca4ds.append(ca4d)
+        spms.append(spm)
         
         next_timestep_datas.append(next_data)
         max_depths.append(max_depth)
@@ -130,14 +132,27 @@ def custom_collate_fn(batch):
     else:
         # 所有都是有效的 tensor
         ca4d_batch = torch.stack(ca4ds)
-    
+
+    # SPM Stack (處理 None 的情況)
+    if all(spm is None for spm in spms):
+        # 如果所有 SPM 都是 None (測試模式),返回 None
+        spm_batch = None
+    elif any(spm is None for spm in spms):
+        # 如果部分是 None,用零填充
+        reference_shape = next((c.shape for c in spms if c is not None), None)
+        spms_filled = [spm if spm is not None else torch.zeros(reference_shape) for spm in spms]
+        spm_batch = torch.stack(spms_filled)
+    else:
+        # 所有都是有效的 tensor
+        spm_batch = torch.stack(spms)
+
     # Meta data
     max_depth_batch = torch.tensor(max_depths, dtype=torch.float32)
     dem_id_batch = torch.tensor(dem_ids, dtype=torch.long)
     
     return (flood_batch, vx_batch, vy_batch, dem_batch,
             mask_flood_batch, mask_vx_batch, mask_vy_batch,
-            rainfall_batch, img_paths, vx_paths, vy_paths, ca4d_batch,
+            rainfall_batch, img_paths, vx_paths, vy_paths, spm_batch, ca4d_batch,
             next_timestep_datas, max_depth_batch, dem_id_batch)
 
 def setup_loader(dataset, batch_size, num_workers=4):

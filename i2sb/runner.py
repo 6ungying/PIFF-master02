@@ -115,14 +115,30 @@ class Runner(object):
         log.info(f"[Diffusion] Built I2SB diffusion: steps={len(betas)}!")
 
         noise_levels = torch.linspace(opt.t0, opt.T, opt.interval, device=opt.device) * opt.interval
-        # [MODIFIED] 設定 ca4d=True
-        self.net = Image256Net(log, noise_levels=noise_levels, use_fp16=opt.use_fp16, cond=opt.cond_x1, ca4d=True)
+        if (hasattr(opt, 'spm') and opt.spm):
+            ca4d = False
+            spm = True
+        elif (hasattr(opt, 'ca4d') and opt.ca4d):
+            ca4d = True
+            spm = False
+        else:
+            spm = False
+            ca4d = False
+
+        self.net = Image256Net(log, noise_levels=noise_levels, use_fp16=opt.use_fp16, cond=opt.cond_x1, ca4d=ca4d, spm=spm)
         self.rainfall_emb = RainfallEmbedder(256, 1)
         params = list(self.net.parameters()) + list(self.rainfall_emb.parameters())
         self.ema = ExponentialMovingAverage(params, decay=opt.ema)
 
         if opt.load:
             checkpoint = torch.load(opt.load, map_location="cpu")
+            net = checkpoint['net']
+            for key in net.keys():
+                if 'spm' in key:
+                    log.info(f"[Net] Detected SPM checkpoint key: {key}")
+                elif 'ca4d' in key:
+                    log.info(f"[Net] Detected CA4D checkpoint key: {key}")
+
             self.net.load_state_dict(checkpoint['net'])
             log.info(f"[Net] Loaded network ckpt: {opt.load}!")
             self.ema.load_state_dict(checkpoint["ema"])
@@ -192,7 +208,7 @@ class Runner(object):
             flood_img, vx_img, vy_img, dem_img,
             mask_flood, mask_vx, mask_vy,
             y, img_name, vx_img_name, vy_img_name,
-            ca4d, next_timestep_data, max_depth, dem_id
+            spm, ca4d, next_timestep_data, max_depth, dem_id
         ) = next(loader)
 
         def ensure_single_channel(t):
@@ -237,7 +253,7 @@ class Runner(object):
         if getattr(opt, "add_x1_noise", False):
             x1 = x1 + torch.randn_like(x1)
 
-        return x0, x1, mask, y, cond, ca4d, next_timestep_data, max_depth, dem_id
+        return x0, x1, mask, y, cond, spm, ca4d, next_timestep_data, max_depth, dem_id
 
     def train(self, opt, train_dataset, val_dataset, corrupt_method):
         gradient_list = []
@@ -263,7 +279,7 @@ class Runner(object):
             optimizer.zero_grad()
 
             for _ in range(n_inner_loop):
-                x0, x1, mask, y, cond, ca4d, next_timestep_data, max_depth, dem_id = self.sample_batch(opt, train_loader, corrupt_method)
+                x0, x1, mask, y, cond, spm, ca4d, next_timestep_data, max_depth, dem_id = self.sample_batch(opt, train_loader, corrupt_method)
 
                 # ... (timestep sampling) ...
                 if opt.timestep_importance == 'continuous':
@@ -286,7 +302,7 @@ class Runner(object):
                     label = self.compute_label(step, x0, xt, x1)
 
                 rainfall_emb = rainfall_embber(y)
-                pred = net(xt, step, rainfall_emb, cond=cond, ca4d=ca4d)
+                pred = net(xt, step, rainfall_emb, cond=cond, spm=spm, ca4d=ca4d)
                 
                 if torch.isnan(xt).any() or torch.isnan(label).any() or torch.isnan(pred).any():
                     continue
@@ -399,7 +415,7 @@ class Runner(object):
         self.writer.close()
 
     @torch.no_grad()
-    def ddpm_sampling(self, opt, x1, y, mask=None, cond=None, clip_denoise=False, nfe=None, log_count=10, verbose=True, eval=False, ode_method=None, ca4d=None):
+    def ddpm_sampling(self, opt, x1, y, mask=None, cond=None, clip_denoise=False, nfe=None, log_count=10, verbose=True, eval=False, ode_method=None, ca4d=None, spm=None):
         nfe = nfe or opt.interval-1
         steps = util.space_indices(opt.interval, nfe+1)
         log_count = min(len(steps)-1, log_count)
@@ -409,6 +425,7 @@ class Runner(object):
         x1 = x1.to(opt.device)
         if cond is not None: cond = cond.to(opt.device)
         if ca4d is not None: ca4d = ca4d.to(opt.device)
+        if spm is not None: spm = spm.to(opt.device)
         
         # mask = None # (傳入的 mask 已經是 None，所以不需要特別設定)
 
@@ -418,11 +435,11 @@ class Runner(object):
             def pred_x0_fn(x1, xt, rainfall_emb, step, ode=None):
                 if not ode:
                     step = torch.full((xt.shape[0],), step, device=opt.device, dtype=torch.long)
-                    out = self.net(xt, step, rainfall_emb, cond=cond, ca4d=ca4d)
+                    out = self.net(xt, step, rainfall_emb, cond=cond, spm=spm, ca4d=ca4d)
                     return self.compute_pred_x0(step, x1, xt, out, clip_denoise=clip_denoise)
                 else:
                     step = torch.full((xt.shape[0],), step, device=opt.device, dtype=torch.float32)
-                    out = self.net(xt, step, rainfall_emb, cond=cond, ca4d=ca4d)
+                    out = self.net(xt, step, rainfall_emb, cond=cond, spm=spm, ca4d=ca4d)
                     return out
 
             rainfall_emb = self.rainfall_emb(y)

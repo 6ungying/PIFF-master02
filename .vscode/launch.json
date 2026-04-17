@@ -1,0 +1,88 @@
+{
+    // 使用 IntelliSense 以得知可用的屬性。
+    // 暫留以檢視現有屬性的描述。
+    // 如需詳細資訊，請瀏覽: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Single flood (SPM)-test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt", "flood-single-spm01", "--use-single-dem" ,"--nfe", "10", "--batch-size", "8"]
+        },
+          {
+            "name": "Single flood (SPM)-train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": ["--name", "flood-single-spm01", "--use-single-dem" , "--spm","--batch-size", "32"]
+        },
+        {
+            "name": "Single flood (ca4d)-test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt", "flood-single-ca4d", "--use-single-dem" ,"--nfe", "10", "--batch-size", "8", "--clip-denoise"]
+        },
+          {
+            "name": "Single flood (ca4d)-train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": ["--name", "flood-single-ca4d", "--use-single-dem" , "--ca4d","--batch-size", "32"]
+        },
+        {
+            "name": "Multi flood (SPM)-test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt", "flood-multi-spm", "--test-dem-list", "\"8,29,62\"", "--nfe", "10", "--batch-size", "8"]
+        },
+          {
+            "name": "Multi flood (SPM)-train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": ["--name", "flood-multi-spm", "--test-dem-list", "\"8,29,62\"", "--spm","--batch-size", "32"]
+        },
+        {
+            "name": "Multi flood (ca4d)-test",
+            "type": "debugpy",
+            "request": "launch",
+             "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt", "flood-multi-ca4d", "--test-dem-list", "\"8,29,62\"", "--nfe", "10", "--batch-size", "8"]
+        },
+        {
+            "name": "Multi flood (ca4d)-train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": ["--name", "flood-multi-ca4d", "--test-dem-list", "\"8,29,62\"", "--ca4d","--batch-size", "32"]
+        },
+        {
+            "name": "Yilan (ca4d)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt" ,"flood-multi-ca4d", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
+        },
+        {
+            "name": "Yilan (spm)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt" ,"flood-multi-spm", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
+        }
+    ]
+}

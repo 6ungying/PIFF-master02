@@ -186,6 +186,7 @@ def build_ckpt_option(opt, log, ckpt_path):
     try:
         with open(opt_pkl_path, "rb") as f:
             ckpt_opt = pickle.load(f)
+
         log.info(f"Loaded options from {opt_pkl_path=}!")
     except (ModuleNotFoundError, AttributeError, ImportError) as e:
         log.warning(f"Failed to load checkpoint options: {e}")

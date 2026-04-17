@@ -3,7 +3,7 @@
 #
 # This work is licensed under the NVIDIA Source Code License
 # for I2SB. To view a copy of this license, see the LICENSE file.
-# ---------------------------------------------------------------
+# -------------------------------------------------------
 
 import os
 import copy
@@ -30,7 +30,7 @@ from i2sb import ckpt_util
 
 import colored_traceback.always
 from ipdb import set_trace as debug
-from corruption.mixture import floodDataset, singleDEMFloodDataset
+from corruption.mixture import floodDataset, singleDEMFloodDataset, yilanDataset
 
 RESULT_DIR = Path("results")
 
@@ -187,37 +187,12 @@ def compute_batch(ckpt_opt, corrupt_type, corrupt_method, out):
             image_name = image_path
             
             # 4. CA4D Guidance (處理 None 的情況)
-            ca4d = ca4d_image.to(opt.device) if ca4d_image is not None else None
+            if ca4d_image is not None:
+                ca4d = ca4d_image.to(opt.device)
+            else:
+                ca4d = None
             
             _ = (vx_path, vy_path, next_timestep_data, max_depth, dem_id)
-
-        elif len(out) == 13:
-            # [LEGACY FORMAT - SPM ONLY] 舊版 mixture
-            flood_image, vx_image, vy_image, dem_image, binary_mask, vx_binary_mask, vy_binary_mask, rainfall, image_path, vx_path, vy_path, spm_image, next_timestep_data = out
-            
-            try:
-                corrupt_img = torch.cat([flood_image, vx_image, vy_image], dim=1)
-            except Exception:
-                corrupt_img = flood_image
-            
-            x1 = corrupt_img.to(opt.device)
-            mask = None
-            
-            if not torch.is_tensor(rainfall):
-                y = torch.tensor(rainfall, dtype=torch.long)
-            else:
-                y = rainfall.long()
-            if y.dim() == 1:
-                y = y.unsqueeze(0)
-            y = (y // 5).clamp(min=0, max=99).to(opt.device)
-            
-            image_name = image_path
-            
-            # SPM Guidance (1-channel)
-            if spm_image is not None:
-                spm = spm_image.to(opt.device)
-
-            _ = (vx_path, vy_path, spm_image, next_timestep_data)
             
         else:
              # Fallback
@@ -270,14 +245,21 @@ def main(opt):
 
     corrupt_method = build_corruption(opt, log, corrupt_type=corrupt_type)
 
-    if opt.test_dem_list:
-        log.info("Using floodDataset for multi-DEM testing")
+    # [MODIFIED] 根據參數選擇數據集
+    if hasattr(opt, 'use_yilan') and opt.use_yilan:
+        log.info("Using yilanDataset for Yilan multi-terrain testing (--use-yilan specified)")
+        val_dataset = yilanDataset(opt)
+    elif opt.use_single_dem:
+        log.info("Using singleDEMFloodDataset for single-DEM testing (--use-single-dem specified)")
+        val_dataset = singleDEMFloodDataset(opt, test=True)
+    elif opt.test_dem_list:
+        # opt.test_dem_list = [int(x.strip()) for x in opt.test_dem_list.split(',')]
+        log.info(f"Using floodDataset for multi-DEM testing (test_dem_list: {opt.test_dem_list})")
         val_dataset = floodDataset(opt, test=True)
     else:
-        log.info("Using singleDEMFloodDataset for single-DEM testing")
+        log.info("Using singleDEMFloodDataset for single-DEM testing (default)")
         val_dataset = singleDEMFloodDataset(opt, test=True)
-    n_samples = len(val_dataset)
-
+    
     from i2sb.util import custom_collate_fn
     subset_dataset = build_subset_per_gpu(opt, val_dataset, log)
     val_loader = DataLoader(subset_dataset,
@@ -296,6 +278,7 @@ def main(opt):
     log.info(f"Recon images will be saved to {recon_imgs_fn}!")
 
     for loader_itr, out in enumerate(val_loader):
+        print(f"[DEBUG] Processing batch {loader_itr + 1}/{len(val_loader)}")
 
         # [MODIFIED] 解包包含 SPM 和 CA4D 的結果
         corrupt_img, x1, mask, cond, y, image_name, spm, ca4d, _ = compute_batch(ckpt_opt, corrupt_type, corrupt_method, out)
@@ -313,14 +296,27 @@ def main(opt):
         for i in range(len(recon_img)):
             rec = recon_img[i]
 
-            # [MODIFIED] Denormalization Logic
+            # [MODIFIED] Denormalization Logic - 根據資料集選擇反標準化參數
+            # 檢查是否為 Yilan 資料 (根據路徑判斷)
+            is_yilan = 'yilan' in str(image_name[i]).lower()
+            
             if rec.shape[0] >= 3:
-                 # depth channel
-                 depth_rec = rec[0:1] * 0.0405 + 0.987
-                 # vx channel
-                 vx_rec = rec[1:2] * 0.0780 + 0.561
-                 # vy channel
-                 vy_rec = rec[2:3] * 0.0789 + 0.495
+                if is_yilan:
+                    # ===== Yilan 統計參數 =====
+                    # depth channel
+                    depth_rec = rec[0:1] * 0.0279 + 0.9880
+                    # vx channel
+                    vx_rec = rec[1:2] * 0.0999 + 0.3571
+                    # vy channel
+                    vy_rec = rec[2:3] * 0.0846 + 0.4413
+                else:
+                    # ===== 訓練集統計參數 (多地形/單地形) =====
+                    # depth channel
+                    depth_rec = rec[0:1] * 0.0405 + 0.987
+                    # vx channel
+                    vx_rec = rec[1:2] * 0.0780 + 0.561
+                    # vy channel
+                    vy_rec = rec[2:3] * 0.0789 + 0.495
 
             path_base = image_name[i].split("\\")[-1]
             if path_base.endswith('.png'):
@@ -361,6 +357,8 @@ if __name__ == '__main__':
     parser.add_argument("--image-size",     type=int,  default=256)
     parser.add_argument("--dataset-dir",    type=Path, default="C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\50PNG\\",  help="path to dataset")
     parser.add_argument("--partition",      type=str,  default=None,        help="e.g., '0_4' means the first 25% of the dataset")
+    parser.add_argument("--use-single-dem", action="store_true", default=False, help="use single DEM flood dataset for testing (instead of multi-DEM)")
+    parser.add_argument("--use-yilan",      action="store_true", default=False, help="use Yilan multi-terrain flood dataset for testing")
     parser.add_argument("--test-dem-list",  type=str,  default=None,        help="Comma-separated list of test DEM numbers, e.g., '61,62,65'")
 
     # sample

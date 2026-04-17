@@ -103,6 +103,9 @@ def create_training_options():
     parser.add_argument("--wandb-api-key",  type=str,   default=None,        help="unique API key of your W&B account; see https://wandb.ai/authorize")
     parser.add_argument("--wandb-user",     type=str,   default=None,        help="user name of your W&B account")
     
+    # --------------- dataset selection ---------------
+    parser.add_argument("--use-single-dem", action="store_true", default=False, help="use single DEM flood dataset instead of multi-DEM")
+    
     # --------------- test DEM configuration ---------------
     parser.add_argument("--test-dem-list",  type=str,   default=None,        help="Comma-separated list of test DEM numbers to exclude from training, e.g., '8,29,62'")
 
@@ -162,8 +165,15 @@ def main(opt):
 
     set_seed(opt.seed + opt.global_rank)
 
-    train_dataset = floodDataset(opt, val=False)
-    val_dataset   = floodDataset(opt, val=True)
+    # [MODIFIED] 根據 --use-single-dem 參數選擇數據集
+    if opt.use_single_dem:
+        log.info("Using single DEM flood dataset for training")
+        train_dataset = singleDEMFloodDataset(opt, val=False, test=False)
+        val_dataset   = singleDEMFloodDataset(opt, val=False, test=False)
+    else:
+        log.info("Using multi-DEM flood dataset for training")
+        train_dataset = floodDataset(opt, val=False)
+        val_dataset   = floodDataset(opt, val=True)
 
     corrupt_method = build_corruption(opt, log)
 
