@@ -126,13 +126,20 @@ def compute_batch(ckpt_opt, corrupt_type, corrupt_method, out):
              vy_binary_mask, rainfall, image_path, vx_path, vy_path, spm_image, ca4d_image, 
              next_timestep_data, max_depth, dem_id) = out
             
-            # 1. 構建 Condition (x1): 3 Channel [Flood, Vx, Vy]
+            # 1. 構建 x1：DEM 作為條件輸入 (3 Channel [dem, dem, dem])
+            # [CORRECTED] 從 DEM 條件預測淹水狀態，而不是從真實淹水數據開始
+            try:
+                x1 = torch.cat([dem_image, dem_image, dem_image], dim=1)
+            except Exception:
+                x1 = dem_image
+            
+            x1 = x1.to(opt.device)
+            
+            # 保留原始的洪水數據用於檢查和比較
             try:
                 corrupt_img = torch.cat([flood_image, vx_image, vy_image], dim=1)
             except Exception:
                 corrupt_img = flood_image
-            
-            x1 = corrupt_img.to(opt.device)
             
             # 2. Mask: 強制設為 None (全圖預測)
             mask = None 
@@ -144,7 +151,9 @@ def compute_batch(ckpt_opt, corrupt_type, corrupt_method, out):
                 y = rainfall.long()
             if y.dim() == 1:
                 y = y.unsqueeze(0)
-            y = (y // 5).clamp(min=0, max=99).to(opt.device)
+            # [FIXED] 移除 // 5 操作，保持與訓練時一致
+            # 訓練時 runner.py 直接使用 y = y.to(device)，沒有做任何縮放
+            y = y.clamp(min=0, max=99).to(opt.device)
             
             image_name = image_path
             
@@ -164,13 +173,20 @@ def compute_batch(ckpt_opt, corrupt_type, corrupt_method, out):
              vy_binary_mask, rainfall, image_path, vx_path, vy_path, ca4d_image, 
              next_timestep_data, max_depth, dem_id) = out
             
-            # 1. 構建 Condition (x1): 3 Channel [Flood, Vx, Vy]
+            # 1. 構建 x1：DEM 作為條件輸入 (3 Channel [dem, dem, dem])
+            # [CORRECTED] 從 DEM 條件預測淹水狀態，而不是從真實淹水數據開始
+            try:
+                x1 = torch.cat([dem_image, dem_image, dem_image], dim=1)
+            except Exception:
+                x1 = dem_image
+            
+            x1 = x1.to(opt.device)
+            
+            # 保留原始的洪水數據用於檢查和比較
             try:
                 corrupt_img = torch.cat([flood_image, vx_image, vy_image], dim=1)
             except Exception:
                 corrupt_img = flood_image
-            
-            x1 = corrupt_img.to(opt.device)
             
             # 2. Mask: 強制設為 None (全圖預測)
             mask = None 
@@ -182,7 +198,8 @@ def compute_batch(ckpt_opt, corrupt_type, corrupt_method, out):
                 y = rainfall.long()
             if y.dim() == 1:
                 y = y.unsqueeze(0)
-            y = (y // 5).clamp(min=0, max=99).to(opt.device)
+            # [FIXED] 移除 // 5 操作，保持與訓練時一致
+            y = y.clamp(min=0, max=99).to(opt.device)
             
             image_name = image_path
             
@@ -231,6 +248,12 @@ def main(opt):
     ckpt_opt = ckpt_util.build_ckpt_option(opt, log, ckpt_dir)
     corrupt_type = ckpt_opt.corrupt
     nfe = opt.nfe or ckpt_opt.interval-1
+
+    # ===== CRITICAL: Sync physical-model flags from checkpoint to sampling opt =====
+    # Dataset must know whether to load SPM / CA4D
+    opt.spm = getattr(ckpt_opt, "spm", False)
+    opt.ca4d = getattr(ckpt_opt, "ca4d", False)
+    log.info(f"[Config Sync] Physical guidance from checkpoint: spm={opt.spm}, ca4d={opt.ca4d}")
 
     # 如果命令列有指定 test_dem_list，使用它；否則從 ckpt_opt 繼承
     if opt.test_dem_list:
@@ -283,11 +306,37 @@ def main(opt):
         # [MODIFIED] 解包包含 SPM 和 CA4D 的結果
         corrupt_img, x1, mask, cond, y, image_name, spm, ca4d, _ = compute_batch(ckpt_opt, corrupt_type, corrupt_method, out)
         
+        # ===== CRITICAL SAFEGUARD: Check that physical guidance is actually loaded =====
+        if getattr(ckpt_opt, "spm", False) and spm is None:
+            raise RuntimeError(
+                "[SPM ERROR] Checkpoint was trained with SPM (--spm), but spm_image is None! "
+                "Check: (1) opt.spm={}, (2) SPM data path exists, (3) SPM filenames match pattern.".format(opt.spm)
+            )
+        
+        if getattr(ckpt_opt, "ca4d", False) and ca4d is None:
+            raise RuntimeError(
+                "[CA4D ERROR] Checkpoint was trained with CA4D (--ca4d), but ca4d_image is None! "
+                "Check: (1) opt.ca4d={}, (2) CA4D data path exists, (3) CA4D filenames match pattern.".format(opt.ca4d)
+            )
+        
+        # ===== Debug print on first batch =====
+        if loader_itr == 0:
+            print(f"[DEBUG] x1 shape={x1.shape}, range=[{x1.min().item():.3f}, {x1.max().item():.3f}]")
+            print(f"[DEBUG] y shape={y.shape}, range=[{y.min().item():.3f}, {y.max().item():.3f}]")
+            if spm is not None:
+                print(f"[DEBUG] spm shape={spm.shape}, range=[{spm.min().item():.3f}, {spm.max().item():.3f}]")
+            else:
+                print(f"[DEBUG] spm: None")
+            if ca4d is not None:
+                print(f"[DEBUG] ca4d shape={ca4d.shape}, range=[{ca4d.min().item():.3f}, {ca4d.max().item():.3f}]")
+            else:
+                print(f"[DEBUG] ca4d: None")
+        
         # [MODIFIED] 只傳入 CA4D 參數 (不傳 SPM,因為 ddpm_sampling 不支援)
         xs, _ = runner.ddpm_sampling(
             ckpt_opt, x1, y, mask=mask, cond=cond, clip_denoise=opt.clip_denoise, nfe=nfe, 
             verbose=opt.n_gpu_per_node==1, eval=True, ode_method=opt.sampling_method,
-            ca4d=ca4d 
+            ca4d=ca4d, spm=spm
         )
         recon_img = xs[:, 0, ...].to(opt.device) 
 
@@ -361,6 +410,9 @@ if __name__ == '__main__':
     parser.add_argument("--use-yilan",      action="store_true", default=False, help="use Yilan multi-terrain flood dataset for testing")
     parser.add_argument("--test-dem-list",  type=str,  default=None,        help="Comma-separated list of test DEM numbers, e.g., '61,62,65'")
     
+    # [ADDED] Physical guidance flags
+    parser.add_argument("--spm",            action="store_true", default=False, help="use SPM guidance during sampling (will be synced from checkpoint)")
+    parser.add_argument("--ca4d",           action="store_true", default=False, help="use CA4D guidance during sampling (will be synced from checkpoint)")
 
     # sample
     parser.add_argument("--batch-size",     type=int,  default=30)
