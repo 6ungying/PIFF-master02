@@ -306,17 +306,17 @@ def main(opt):
                     # depth channel
                     depth_rec = rec[0:1] * 0.0279 + 0.9880
                     # vx channel
-                    vx_rec = rec[1:2] * 0.0999 + 0.3571
+                    vx_rec = rec[1:2] * 0.0999 * 0.01 + 0.3571
                     # vy channel
-                    vy_rec = rec[2:3] * 0.0846 + 0.4413
+                    vy_rec = rec[2:3] * 0.0846 * 0.01 + 0.4413
                 else:
                     # ===== 訓練集統計參數 (多地形/單地形) =====
                     # depth channel
                     depth_rec = rec[0:1] * 0.0405 + 0.987
                     # vx channel
-                    vx_rec = rec[1:2] * 0.0780 + 0.561
+                    vx_rec = rec[1:2] * 0.0780 * 0.88 + 0.561
                     # vy channel
-                    vy_rec = rec[2:3] * 0.0789 + 0.495
+                    vy_rec = rec[2:3] * 0.0789 * 0.88 + 0.495
 
             path_base = image_name[i].split("\\")[-1]
             if path_base.endswith('.png'):
@@ -360,6 +360,7 @@ if __name__ == '__main__':
     parser.add_argument("--use-single-dem", action="store_true", default=False, help="use single DEM flood dataset for testing (instead of multi-DEM)")
     parser.add_argument("--use-yilan",      action="store_true", default=False, help="use Yilan multi-terrain flood dataset for testing")
     parser.add_argument("--test-dem-list",  type=str,  default=None,        help="Comma-separated list of test DEM numbers, e.g., '61,62,65'")
+    
 
     # sample
     parser.add_argument("--batch-size",     type=int,  default=30)
