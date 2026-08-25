@@ -108,6 +108,7 @@ def create_training_options():
     
     # --------------- test DEM configuration ---------------
     parser.add_argument("--test-dem-list",  type=str,   default=None,        help="Comma-separated list of test DEM numbers to exclude from training, e.g., '8,29,62'")
+    parser.add_argument("--test-rain-list", type=str,   default=None,        help="Comma-separated list of test rainfall scenarios to exclude from training, e.g., '9,20,33'")
 
     opt = parser.parse_args()
     
@@ -117,6 +118,13 @@ def create_training_options():
         print(f"Test DEMs (excluded from training): {opt.test_dem_list}")
     else:
         opt.test_dem_list = None
+    
+    # ========= process test rainfall list =========
+    if opt.test_rain_list:
+        opt.test_rain_list = [int(x.strip()) for x in opt.test_rain_list.split(',')]
+        print(f"Test Rainfall Scenarios (excluded from training): {opt.test_rain_list}")
+    else:
+        opt.test_rain_list = None
 
     # ========= auto setup =========
     # 嘗試使用 GPU（即使有 sm_120 警告也試試看）

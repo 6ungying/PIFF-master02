@@ -244,11 +244,9 @@ class Runner(object):
         y      = y.to(device)
         x0     = clean_img.to(device)
         x1     = corrupt_img.to(device)
+        spm    = spm.to(device) if spm is not None else None
         ca4d   = ca4d.to(device) if ca4d is not None else None
-        
-        # mask 已經是 None，不需要 .to(device)
-
-        cond = x1 if opt.cond_x1 else None
+        cond = None
 
         if getattr(opt, "add_x1_noise", False):
             x1 = x1 + torch.randn_like(x1)
@@ -455,11 +453,14 @@ class Runner(object):
         log = self.log
         log.info(f"========== Evaluation started: iter={it} ==========")
 
-        img_clean, img_corrupt, mask, y, cond, spm, _ = self.sample_batch(opt, val_loader, corrupt_method)
+        img_clean, img_corrupt, mask, y, cond, spm, ca4d = self.sample_batch(opt, val_loader, corrupt_method)
 
         x1 = img_corrupt.to(opt.device)
+        spm = spm.to(opt.device) if spm is not None else None
+        ca4d = ca4d.to(opt.device) if ca4d is not None else None
         xs, pred_x0s = self.ddpm_sampling(
-            opt, x1, y, mask=mask, cond=cond, clip_denoise=opt.clip_denoise, verbose=opt.global_rank==0
+            opt, x1, y, mask=mask, cond=cond, clip_denoise=opt.clip_denoise, verbose=opt.global_rank==0,
+            ca4d=ca4d, spm=spm
         )
 
         log.info("Collecting tensors ...")

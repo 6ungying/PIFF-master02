@@ -103,12 +103,20 @@
             "args": ["--ckpt", "flood-multi-physics", "--test-dem-list", "\"8,29,62\"", "--nfe", "10", "--batch-size", "8"]
         },
         {
-            "name": "Yilan (physics loss)-test",
+            "name": "Yilan (Pure Diffusion)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt" ,"flood-multi-physics", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
+            "args": ["--ckpt" ,"flood-multi-pure-new", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
+        },
+        {
+            "name": "Yilan (physics loss)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt" ,"flood-multi-physics-new", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
         },
         {
             "name": "Yilan (ca4d)",
@@ -116,7 +124,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt" ,"flood-multi-ca4d", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
+            "args": ["--ckpt" ,"flood-multi-ca4d-new", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
         },
         {
             "name": "Yilan (spm)",
@@ -124,7 +132,108 @@
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt" ,"flood-multi-spm", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
-        }
+            "args": ["--ckpt" ,"flood-multi-spm-new", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
+        },
+
+        {
+            "name": "Multi flood (SPM)-train-new (17,42,54 + 9,20,33)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": ["--name", "flood-multi-spm-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--spm","--batch-size", "32"]
+        },
+        {
+            "name": "Multi flood (SPM)-test-new (17,42,54 + 9,20,33)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt", "flood-multi-spm-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--nfe", "10", "--batch-size", "8"]
+        },
+
+        {
+            "name": "Multi flood (ca4d)-train-new (17,42,54 + 9,20,33)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": ["--name", "flood-multi-ca4d-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--ca4d","--batch-size", "32"]
+        },
+        {
+            "name": "Multi flood (ca4d)-test-new (17,42,54 + 9,20,33)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt", "flood-multi-ca4d-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--nfe", "10", "--batch-size", "8"]
+        },
+
+        {
+            "name": "Multi flood (Pure Diffusion)-train-new (17,42,54 + 9,20,33)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": ["--name", "flood-multi-pure-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--batch-size", "32"]
+        },
+        {
+            "name": "Multi flood (Pure Diffusion)-test-new (17,42,54 + 9,20,33)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt", "flood-multi-pure-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--nfe", "10", "--batch-size", "8"]
+        },
+
+        {
+            "name": "Multi flood (physics loss)-train-new (17,42,54 + 9,20,33)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "args": ["--name", "flood-multi-physics-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--use-physics", "--batch-size", "32"]
+        },
+        {
+            "name": "Multi flood (physics loss)-test-new (17,42,54 + 9,20,33)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt", "flood-multi-physics-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--nfe", "10", "--batch-size", "8"]
+        },
+        {
+            "name": "Hsinchu (Pure Diffusion)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt" ,"flood-multi-pure-new", "--use-hsinchu", "--nfe", "10", "--batch-size", "8"]
+        },
+        {
+            "name": "Hsinchu (physics loss)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt" ,"flood-multi-physics-new", "--use-hsinchu", "--nfe", "10", "--batch-size", "8"]
+        },
+        {
+            "name": "Hsinchu (ca4d)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt" ,"flood-multi-ca4d-new", "--use-hsinchu", "--nfe", "10", "--batch-size", "8"]
+        },
+        {
+            "name": "Hsinchu (spm)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": ["--ckpt" ,"flood-multi-spm-new", "--use-hsinchu", "--nfe", "10", "--batch-size", "8"]
+        },
+
     ]
 }

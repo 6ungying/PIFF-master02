@@ -135,24 +135,73 @@ def calculate_mean_std(folder_path, file_pattern):
 
 # Calculate for depth (d)
 print("=== Calculating statistics for depth (d) ===")
-depth_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\d'
+depth_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\hsinchu\\tuflow\\d'
 d_mean, d_std = calculate_mean_std(depth_path, '_d_')
 print(f'Depth - Mean: {d_mean}, Std: {d_std}')
 
 # Calculate for Vx
 print("\n=== Calculating statistics for Vx ===")
-vx_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\vx'
+vx_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\hsinchu\\tuflow\\vx'
 vx_mean, vx_std = calculate_mean_std(vx_path, '_vx_')
 print(f'Vx - Mean: {vx_mean}, Std: {vx_std}')
 
 # Calculate for Vy
 print("\n=== Calculating statistics for Vy ===")
-vy_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\vy'
+vy_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\hsinchu\\tuflow\\vy'
 vy_mean, vy_std = calculate_mean_std(vy_path, '_vy_')
 print(f'Vy - Mean: {vy_mean}, Std: {vy_std}')
 
+# Calculate for dem
+print("\n=== Calculating statistics for dem ===")
+dem_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\hsinchu\\dem'
+
+# DEM files have a different structure (not nested like tuflow data)
+# They are directly in the dem folder as yilan01.png, yilan02.png, etc.
+def calculate_dem_mean_std(dem_folder_path):
+    """
+    Calculate mean and std for DEM files
+    DEM files are directly in the folder (yilan01.png, yilan02.png, etc.)
+    """
+    file_paths = []
+    
+    # 取得該資料夾內的 PNG 檔案
+    for png_file in os.listdir(dem_folder_path):
+        file_full_path = os.path.join(dem_folder_path, png_file)
+        if os.path.isfile(file_full_path) and png_file.endswith('.png'):
+            file_paths.append(file_full_path)
+    
+    mean_sum = 0
+    std_sum = 0
+    pixel_count = 0
+    
+    print(f"Processing {len(file_paths)} files for dem...")
+    
+    for file_path in file_paths:
+        image = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
+        if image is None:
+            continue
+        # Handle both grayscale and multi-channel images
+        if len(image.shape) == 3:
+            image = image[:, :, 0]  # Take the first channel if multi-channel
+        
+        image = image.astype(np.float64) / 255.0
+        
+        mean_sum += np.sum(image)
+        std_sum += np.sum(np.square(image))
+        pixel_count += image.size
+    
+    if pixel_count > 0:
+        mean = mean_sum / pixel_count
+        std = np.sqrt(std_sum / pixel_count - mean**2)
+        return mean, std
+    else:
+        return 0, 0
+
+dem_mean, dem_std = calculate_dem_mean_std(dem_path)
+print(f'Dem - Mean: {dem_mean}, Std: {dem_std}')
+
 # Calculate for V
-print("\n=== Calculating statistics for V ===")
-vz_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\v'
-v_mean, v_std = calculate_mean_std(vz_path, '_v_')
-print(f'V - Mean: {v_mean}, Std: {v_std}')
+# print("\n=== Calculating statistics for V ===")
+# vz_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\yilan_new\\tuflow\\v'
+# v_mean, v_std = calculate_mean_std(vz_path, '_v_')
+# print(f'V - Mean: {v_mean}, Std: {v_std}')
