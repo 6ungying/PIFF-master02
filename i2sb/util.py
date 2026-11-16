@@ -45,6 +45,7 @@ def custom_collate_fn(batch):
     dem_ids = []
     
     for item in batch:
+        spm = None
         # 根據回傳長度解包 (支援 16, 15, 13, 12 等舊格式相容)
         if len(item) == 16:
             # 最新格式 (同時包含 spm_image 和 ca4d_image)
@@ -93,8 +94,8 @@ def custom_collate_fn(batch):
     
     # Stack tensors
     flood_batch = torch.stack(flood_imgs)
-    vx_batch = torch.stack(vx_imgs)
-    vy_batch = torch.stack(vy_imgs)
+    vx_batch = None  # Reserved legacy tuple slots; velocity targets are unused.
+    vy_batch = None
     dem_batch = torch.stack(dem_imgs)
     
     # [MODIFIED] 若列表中包含 None，則 Batch 結果也為 None (避免 stack 報錯)

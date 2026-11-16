@@ -16,24 +16,19 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from torch_ema import ExponentialMovingAverage
 import torchvision.utils as tu
-import torchmetrics
 from tqdm import tqdm
 
 import distributed_util as dist_util
-from evaluation import build_resnet50
 from matplotlib import pyplot as plt
 
 from . import util
 from .network import Image256Net
-from .diffusion import Diffusion, disabled_train, create_model_config
-from i2sb.VQGAN.vqgan import VQModel
-from i2sb.base.modules.encoders.modules import SpatialRescaler
+from .diffusion import Diffusion
 from torch.utils.data import DataLoader
 from corruption.mixture import floodDataset
 from .embedding import RainfallEmbedder
 
 from ipdb import set_trace as debug
-from i2sb.physics_loss import PhysicsInformedLoss
 
 def build_optimizer_sched(opt, rainfall_embber, net, log):
     optim_dict = {"lr": opt.lr, 'weight_decay': opt.l2_norm}
@@ -93,16 +88,20 @@ class Runner(object):
         super(Runner,self).__init__()
 
         self.opt = opt
-        self.model_config = create_model_config()
+        opt.target_channels = 1
+        opt.ca4d_channels = 1
+        if getattr(opt, 'use_physics', False):
+            raise ValueError('Depth-only training cannot use --use-physics: mass conservation requires vx and vy predictions.')
         if opt.latent_space:
-            self.vqgan = VQModel(**vars(self.model_config.VQGAN.params)).eval()
-            self.vqgan.train = disabled_train
-            for param in self.vqgan.parameters():
-                param.requires_grad = False
-            self.cond_stage_model = SpatialRescaler(**vars(self.model_config.CondStageParams))
-            self.vqgan.to(opt.device)
-            self.cond_stage_model.to(opt.device)
-
+            raise ValueError('Depth-only training currently supports pixel space only; the existing VQGAN uses three channels.')
+        checkpoint = None
+        if opt.load:
+            checkpoint = torch.load(opt.load, map_location='cpu')
+            if checkpoint['net']['diffusion_model.input_blocks.0.0.weight'].shape[1] != 1:
+                raise ValueError('Three-channel checkpoint detected. Train a new depth-only model with a new --name.')
+            adapter = checkpoint['net'].get('ca4d_adapter.weight')
+            if adapter is not None and adapter.shape[1] != 2:
+                raise ValueError('This checkpoint uses d/vx/vy CA4D guidance. Start a new training run with depth-only CA4D guidance.')
         if save_opt:
             opt_pkl_path = opt.ckpt_path / "options.pkl"
             with open(opt_pkl_path, "wb") as f:
@@ -131,7 +130,6 @@ class Runner(object):
         self.ema = ExponentialMovingAverage(params, decay=opt.ema)
 
         if opt.load:
-            checkpoint = torch.load(opt.load, map_location="cpu")
             net = checkpoint['net']
             for key in net.keys():
                 if 'spm' in key:
@@ -153,37 +151,7 @@ class Runner(object):
         self.ema.to(opt.device)
         self.rainfall_emb.to(opt.device)
 
-        if getattr(opt, 'use_physics', False):
-            try:
-                self.physics_loss = PhysicsInformedLoss(
-                    dx=getattr(opt, 'dx', 20.0),
-                    dy=getattr(opt, 'dy', 20.0),
-                    dt=getattr(opt, 'dt', 3600.0),
-                    h_mean=0.986,
-                    h_std=0.0405,
-                    u_mean=0.561,
-                    u_std=0.078,
-                    v_mean=0.495,
-                    v_std=0.0789,
-                    pixel_to_mps=0.066369,
-                )
-                self.physics_loss.to(opt.device)
-                self.physics_weight = getattr(opt, 'physics_weight', 1.0)
-                log.info(f"[Physics] [OK] 質量守恆損失已啟用 (weight={self.physics_weight})")
-            except Exception as e:
-                log.error(f"[Physics] 初始化失敗: {e}")
-                self.physics_loss = None
-        else:
-            self.physics_loss = None
-            log.info("[Physics] 物理損失未啟用")
-
         self.log = log
-
-        if opt.eval:
-            self.net.ori_latent_mean = self.net.ori_latent_mean.to(opt.device)
-            self.net.ori_latent_std = self.net.ori_latent_std.to(opt.device)
-            self.net.cond_latent_mean = self.net.cond_latent_mean.to(opt.device)
-            self.net.cond_latent_std = self.net.cond_latent_std.to(opt.device)
 
     def logger(self, msg, **kwargs):
         print(msg, **kwargs)
@@ -217,13 +185,11 @@ class Runner(object):
             return t
 
         flood_img = ensure_single_channel(flood_img)
-        vx_img    = ensure_single_channel(vx_img)
-        vy_img    = ensure_single_channel(vy_img)
         dem_img   = ensure_single_channel(dem_img)
 
-        # [N, 3, H, W]
-        clean_img   = torch.cat([flood_img, vx_img, vy_img], dim=1)
-        corrupt_img = torch.cat([dem_img, dem_img, dem_img], dim=1)
+        # [N, 1, H, W]: depth target and DEM bridge endpoint.
+        clean_img = flood_img
+        corrupt_img = dem_img
 
         # [MODIFIED] 強制設定 Mask 為 None (完全不使用 Mask)
         # 即使 dataset 回傳了 None，我們也明確指定 mask 變數為 None，
@@ -234,8 +200,6 @@ class Runner(object):
         if torch.isnan(clean_img).any():
             flood_nan = torch.isnan(clean_img[:, 0:1])
             clean_img[:, 0:1] = torch.where(flood_nan, torch.tensor(0.01, device=clean_img.device), clean_img[:, 0:1])
-            vel_nan = torch.isnan(clean_img[:, 1:])
-            clean_img[:, 1:] = torch.where(vel_nan, torch.tensor(0.0, device=clean_img.device), clean_img[:, 1:])
 
         if torch.isnan(corrupt_img).any():
              corrupt_img = torch.nan_to_num(corrupt_img, nan=0.0)
@@ -268,8 +232,6 @@ class Runner(object):
         train_loader = util.setup_loader(train_dataset, opt.microbatch)
         val_loader   = util.setup_loader(val_dataset,   opt.microbatch)
 
-        self.accuracy = torchmetrics.Accuracy(task="multiclass", num_classes=2).to(opt.device)
-        self.resnet = build_resnet50().to(opt.device)
 
         net.train()
         n_inner_loop = opt.batch_size // (opt.global_size * opt.microbatch)
@@ -312,67 +274,6 @@ class Runner(object):
                     continue
 
                 total_loss = mse_loss
-                physics_loss_value = torch.tensor(0.0, device=opt.device)
-                phys_summary = {}
-
-                if self.physics_loss is not None and pred is not None and not getattr(opt, 'latent_space', False) and next_timestep_data is not None:
-                    valid_indices = [i for i, data in enumerate(next_timestep_data) if data is not None]
-                    
-                    if len(valid_indices) > 0:
-                        if opt.timestep_importance == 'continuous':
-                            x0_hat = x1 - pred
-                        else:
-                            x0_hat = self.compute_pred_x0(step, xt, x1, pred, clip_denoise=False)
-
-                        if x0_hat.shape[1] >= 3:
-                            for idx in valid_indices:
-                                try:
-                                    pred_h_t = x0_hat[idx:idx+1, 0:1, :, :]
-                                    pred_u_t = x0_hat[idx:idx+1, 1:2, :, :]
-                                    pred_v_t = x0_hat[idx:idx+1, 2:3, :, :]
-
-                                    next_data = next_timestep_data[idx]
-                                    next_flood, next_vx, next_vy, _, _, _ = next_data 
-                                    
-                                    if next_flood.dim() == 3:
-                                        next_flood = next_flood.unsqueeze(0)
-                                    pred_h_t1 = next_flood.to(pred_h_t.device)
-
-                                    if torch.is_tensor(y) and y.numel() > 0:
-                                        if y.dim() > 1:
-                                            rainfall_t = y[idx].float().mean()
-                                        else:
-                                            rainfall_t = y[idx].float()
-                                    else:
-                                        rainfall_t = torch.tensor(0.0, device=pred_h_t.device)
-
-                                    sample_max_depth = None
-                                    if max_depth is not None:
-                                        if torch.is_tensor(max_depth):
-                                            sample_max_depth = max_depth[idx:idx+1]
-                                        elif isinstance(max_depth, (list, tuple)):
-                                            sample_max_depth = torch.tensor([max_depth[idx]], device=pred_h_t.device, dtype=pred_h_t.dtype)
-                                        else:
-                                            sample_max_depth = torch.tensor([max_depth], device=pred_h_t.device, dtype=pred_h_t.dtype)
-
-                                    # [MODIFIED] Physics Loss: 明確傳入 mask=None
-                                    physics_loss_single, phys_summary_single = self.physics_loss(
-                                        pred_h_t, pred_u_t, pred_v_t,
-                                        pred_h_t1,
-                                        rainfall_t,
-                                        mask=None,  # <-- 強制 mask=None (全圖計算)
-                                        max_depth=sample_max_depth
-                                    )
-
-                                    physics_loss_value = physics_loss_value + physics_loss_single / len(valid_indices)
-                                    if idx == valid_indices[-1]:
-                                        phys_summary = phys_summary_single
-                                        
-                                except Exception as e:
-                                    continue
-
-                            total_loss = mse_loss + self.physics_weight * physics_loss_value
-
                 total_loss.backward()
                 losses.append(total_loss.item())
             
@@ -381,21 +282,13 @@ class Runner(object):
             ema.update()
             if sched is not None: sched.step()
 
-            if self.physics_loss is not None:
-                log.info("train_it {}/{} | lr:{} | mse:{:.4f} | phys:{:.4f} | total:{:.4f}".format(
-                    1+it, opt.num_itr, "{:.2e}".format(optimizer.param_groups[0]['lr']),
-                    mse_loss.item(), physics_loss_value.item() if isinstance(physics_loss_value, torch.Tensor) else physics_loss_value, total_loss.item(),
-                ))
-            else:
-                log.info("train_it {}/{} | lr:{} | loss:{}".format(
-                    1+it, opt.num_itr, "{:.2e}".format(optimizer.param_groups[0]['lr']), "{:+.4f}".format(total_loss.item()),
-                ))
-            
+            log.info("train_it {}/{} | lr:{} | loss:{}".format(
+                1+it, opt.num_itr, "{:.2e}".format(optimizer.param_groups[0]['lr']), "{:+.4f}".format(total_loss.item()),
+            ))
+
             if it % 10 == 0:
                 self.writer.add_scalar(it, 'total_loss', total_loss.detach())
                 self.writer.add_scalar(it, 'mse_loss', mse_loss.detach())
-                if self.physics_loss is not None:
-                    self.writer.add_scalar(it, 'mass_conservation_loss', physics_loss_value.detach())
 
             if it % 100 == 0:
                 if opt.global_rank == 0:
@@ -453,7 +346,7 @@ class Runner(object):
         log = self.log
         log.info(f"========== Evaluation started: iter={it} ==========")
 
-        img_clean, img_corrupt, mask, y, cond, spm, ca4d = self.sample_batch(opt, val_loader, corrupt_method)
+        img_clean, img_corrupt, mask, y, cond, spm, ca4d, *_ = self.sample_batch(opt, val_loader, corrupt_method)
 
         x1 = img_corrupt.to(opt.device)
         spm = spm.to(opt.device) if spm is not None else None

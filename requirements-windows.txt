@@ -1,0 +1,30 @@
+# Python 3.10; CUDA 11.8 wheels for the RTX 4090.
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.0.1+cu118
+torchvision==0.15.2+cu118
+numpy==1.26.4
+setuptools==75.8.0
+scipy==1.13.1
+termcolor
+easydict
+ipdb
+tqdm
+scikit-learn
+imageio
+matplotlib
+tensorboard
+torchmetrics==0.9.3
+prefetch-generator
+colored-traceback
+torch-ema
+gdown==4.6.0
+clean-fid==0.1.35
+rich
+lmdb
+wandb
+pandas
+opencv-python==4.10.0.84
+einops
+omegaconf==2.3.0
+pytorch-lightning==1.9.5
+pytorch-fid==0.3.0

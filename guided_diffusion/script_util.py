@@ -152,6 +152,7 @@ def create_model(
     use_fp16=False,
     use_new_attention_order=False,
     in_channels=3,
+    out_channels=3,
     **kwargs,
 ):
     if channel_mult == "":
@@ -176,7 +177,7 @@ def create_model(
         image_size=image_size,
         in_channels=in_channels,  # Use the parameter instead of hardcoded 2
         model_channels=num_channels,
-        out_channels=(3 if not learn_sigma else 6),  # Use 3 for our h,u,v output
+        out_channels=out_channels * (2 if learn_sigma else 1),
         num_res_blocks=num_res_blocks,
         attention_resolutions=tuple(attention_ds),
         dropout=dropout,

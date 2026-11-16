@@ -8,7 +8,7 @@
 import os
 import numpy as np
 import enum
-import pandas as pd 
+import pandas as pd
 import cv2
 from PIL import Image
 from pathlib import Path
@@ -157,33 +157,34 @@ class floodDataset(Dataset):
     def __init__(self, opt, val=False, test=False):
         super(floodDataset, self).__init__()
         self.opt = opt
-        dem_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\dem_png'
-        
+        self.data_root = Path(getattr(opt, "dataset_dir", None) or Path(__file__).resolve().parents[2] / "data").expanduser().resolve()
+        dem_path = str(self.data_root / 'dems/dem_png')
+
         # [MODIFIED] 同時支援 SPM 和 CA4D 路徑
-        self.spm_folder = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\SPM_71dem_output'
+        self.spm_folder = str(self.data_root / 'SPM_71dem_output')
         # CA4D 資料夾: 根據測試/訓練模式選擇不同資料集
         # - Multi: 多 DEM 訓練 (30 DEMs × 86 scenarios)
         # - single_train: 單 DEM 訓練 (1 DEM × 182 scenarios)
         # - single_test: 單 DEM 測試 (1 DEM × 15 scenarios)
         # [FIXED] 正確的路徑應該是 data/ca4d/ca4d/{dataset}
         if test:
-            self.ca4d_folder = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\ca4d\\ca4d\\Multi'
+            self.ca4d_folder = str(self.data_root / 'ca4d/ca4d/Multi')
         else:
             # 訓練模式: 使用 Multi (多 DEM) 或 single_train (單 DEM)
             # 可以根據 opt.ca4d_dataset 參數選擇
             ca4d_dataset = getattr(opt, 'ca4d_dataset', 'Multi') if opt is not None else 'Multi'
-            self.ca4d_folder = f'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\ca4d\\ca4d\\{ca4d_dataset}'
-        
+            self.ca4d_folder = str(self.data_root / 'ca4d' / 'ca4d' / ca4d_dataset)
+
         # 控制載入哪個物理模型 (從 opt 參數讀取，使用 getattr 避免 AttributeError)
         self.use_spm = getattr(opt, 'spm', False) if opt is not None else False
         self.use_ca4d = getattr(opt, 'ca4d', False) if opt is not None else False
 
-        self.dem_stat = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\dem_png\\elevation_stats.csv'
+        self.dem_stat = str(self.data_root / 'dems/dem_png/elevation_stats.csv')
         self.dem_stat = pd.read_csv(self.dem_stat)
-        
+
         # ===== 整合 CSV 讀取：載入地形深度數據 =====
         # 從 maxmin_duv.csv 讀取每個地形的最大深度（用於物理損失）
-        maxmin_csv_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\maxmin_duv.csv'
+        maxmin_csv_path = str(self.data_root / 'maxmin_duv.csv')
         if os.path.exists(maxmin_csv_path):
             terrain_df = pd.read_csv(maxmin_csv_path)
             self.terrain_depths = dict(zip(terrain_df['terrain'].astype(int), terrain_df['depth_max']))
@@ -191,20 +192,20 @@ class floodDataset(Dataset):
         else:
             self.terrain_depths = {}
             print(f"[Dataset] [WARNING] maxmin_duv.csv not found, using default depth 4.0m")
-        
+
         self.test = test
 
-        self.flood_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\d'
-        self.vx_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\vx'
-        self.vy_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\train\\vy'
-        rainfall_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\scenario_rainfall.csv'
-        
+        self.flood_path = str(self.data_root / 'dems/train/d')
+        self.vx_path = str(self.data_root / 'dems/train/vx')
+        self.vy_path = str(self.data_root / 'dems/train/vy')
+        rainfall_path = str(self.data_root / 'dems/scenario_rainfall.csv')
+
         # 使用所有可用的 DEM 資料夾進行訓練
         all_available_dems = [int(f) for f in os.listdir(self.flood_path) if os.path.isdir(os.path.join(self.flood_path, f))]
-        
+
         # 取得 test_rain_list（測試用的雨型ID）
         test_rain_list = getattr(opt, 'test_rain_list', None) if opt is not None else None
-        
+
         if test:
             # 測試模式: 優先使用命令列指定的 test_dem_list
             if hasattr(opt, 'test_dem_list') and opt.test_dem_list is not None:
@@ -225,7 +226,7 @@ class floodDataset(Dataset):
                 # 沒指定測試 DEM,使用全部
                 dem_folder = all_available_dems
                 print(f"[Training mode] Using all available DEMs: {sorted(dem_folder)}")
-            
+
             # 打印雨型篩選信息
             if test_rain_list is not None:
                 print(f"[Training mode] Excluding test rainfall scenarios: {test_rain_list}")
@@ -245,7 +246,7 @@ class floodDataset(Dataset):
                 if col == 'time':
                     continue
                 col_num = int(col.split("_")[1])
-                
+
                 # [ADDED] 在訓練模式排除測試雨型，在測試模式只選擇測試雨型
                 if test:
                     # 測試模式: 如果指定了 test_rain_list，只使用這些雨型
@@ -255,7 +256,7 @@ class floodDataset(Dataset):
                     # 訓練模式: 如果指定了 test_rain_list，排除這些雨型
                     if test_rain_list is not None and col_num in test_rain_list:
                         continue
-                
+
                 if (val and col_num not in [2]) or (not val and col_num in []):
                     continue
                 cell_values = []
@@ -269,21 +270,21 @@ class floodDataset(Dataset):
                     if len(temp) == 25:
                         temp = temp[1:]
                     sum_rainfall = sum(temp[:])
-                    
+
                     if not test and sum_rainfall <= 5:
                         if np.random.rand() < 0.8:
                             continue
-                    
+
                     # [MODIFIED] 彈性檢查：根據 use_spm / use_ca4d 決定要檢查哪個
                     skip_sample = False
-                    
+
                     # 只在啟用時才檢查 SPM
                     if self.use_spm:
                         spm_value = int(np.ceil(sum_rainfall / 5) * 5)
                         spm_path = os.path.join(self.spm_folder, str(dem_num), f'SPM_{dem_num}_{spm_value}.png')
                         if not os.path.exists(spm_path):
                             skip_sample = True
-                    
+
                     # 只在啟用時才檢查 CA4D
                     if self.use_ca4d and not skip_sample:
                         dem_str = str(dem_num)
@@ -291,46 +292,42 @@ class floodDataset(Dataset):
                         rf_scenario = f"rf{col_num:02d}"
                         # CA4D timestep 從 001 開始 (row+1)
                         time_str = f"{row:03d}"
-                        
+
                         # CA4D 資料夾結構: ca4d_folder/d/{DEM}/rf{scenario}/ca4d_{DEM}_rf{scenario}_d_{timestep}.png
                         path_d = os.path.join(self.ca4d_folder, 'd', dem_str, rf_scenario,
                                                 f"ca4d_{dem_str}_{rf_scenario}_d_{time_str}.png")
-                        path_vx = os.path.join(self.ca4d_folder, 'vx', dem_str, rf_scenario,
-                                                 f"ca4d_{dem_str}_{rf_scenario}_vx_{time_str}.png")
-                        path_vy = os.path.join(self.ca4d_folder, 'vy', dem_str, rf_scenario,
-                                                 f"ca4d_{dem_str}_{rf_scenario}_vy_{time_str}.png")
-                        
-                        if not all([os.path.exists(p) for p in [path_d, path_vx, path_vy]]):
+
+                        if not all([os.path.exists(p) for p in [path_d]]):
                             skip_sample = True
-                    
+
                     if skip_sample:
                         continue
-                    
+
                     # 檢查 Ground Truth
                     dem_str = str(dem_num)
                     if col_num < 100:
                         folder_name = f"RF{col_num:02d}"
                     else:
                         folder_name = f"RF{col_num}"
-                    
+
                     flood_name = f"{dem_str}_{folder_name}_d_{row:03d}_00.png"
                     vx_name = f"{dem_str}_{folder_name}_vx_{row:03d}_00.png"
                     vy_name = f"{dem_str}_{folder_name}_vy_{row:03d}_00.png"
-                    
+
                     flood_path = os.path.join(self.flood_path, dem_str, folder_name, flood_name)
                     vx_path = os.path.join(self.vx_path, dem_str, folder_name, vx_name)
                     vy_path = os.path.join(self.vy_path, dem_str, folder_name, vy_name)
-                    
-                    if not all([os.path.exists(p) for p in [flood_path, vx_path, vy_path]]):
+
+                    if not all([os.path.exists(p) for p in [flood_path]]):
                         continue
-                    
+
                     # [RESTORED] 計算並儲存 SPM 值
                     spm_value = int(np.ceil(sum_rainfall / 5) * 5)
                     spm_values.append(spm_value)
-                    
+
                     rainfall_cum_value.append(temp[:])
                     # col_num is the rainfall index, and row is the time index
-                    cell_positions.append((dem_num, col_num, row))   
+                    cell_positions.append((dem_num, col_num, row))
 
         # [MODIFIED] 在測試模式添加 t=0 初始狀態樣本（預測 0-24 小時）
         if test:
@@ -340,12 +337,12 @@ class floodDataset(Dataset):
                 key = (dem_num, col_num)
                 if key not in unique_scenarios:
                     unique_scenarios[key] = True
-            
+
             # 為每個情景添加一個 t=0 初始狀態樣本 (row=-1 標記)
             t0_samples = []
             t0_rainfall = []
             t0_spm = []
-            
+
             for (dem_num, col_num) in unique_scenarios.keys():
                 # 查找該情景的第一個樣本（用於獲取 SPM 值）
                 first_rainfall = None
@@ -355,51 +352,51 @@ class floodDataset(Dataset):
                         first_rainfall = rainfall_cum_value[i]
                         first_spm = spm_values[i]
                         break
-                
+
                 if first_rainfall is not None:
                     t0_samples.append((dem_num, col_num, -1))  # -1 標記為 t=0
                     t0_rainfall.append(first_rainfall)
                     t0_spm.append(first_spm)
-            
+
             # 在開頭插入 t=0 樣本
             cell_positions = t0_samples + cell_positions
             rainfall_cum_value = t0_rainfall + rainfall_cum_value
             spm_values = t0_spm + spm_values
-            
+
             print(f"[Test mode] Added {len(t0_samples)} t=0 initial state samples")
             print(f"[Test mode] Total samples: {len(cell_positions)} (t=0 ~ t=24 小時)")
-            
+
             # 列印測試配置信息
             if test_rain_list is not None:
                 print(f"[Test mode] Using specified rainfall scenarios: {test_rain_list}")
-        
+
         self.rainfall = rainfall_cum_value
         self.cell_positions = cell_positions
         self.spm_values = spm_values  # [RESTORED] 儲存 SPM 值列表
-        
+
         # [ADDED] 驗證並計算雨型篩選的效果
         if not test and test_rain_list is not None:
             # 計算原始應該有的樣本數（如果不篩選雨型）
             total_rainfall_scenarios = len([c for c in rainfall.columns if c != 'time'])
             excluded_rain_count = len(test_rain_list)
             included_rain_count = total_rainfall_scenarios - excluded_rain_count
-            
+
             # 估算樣本統計
             total_dems_count = len(dem_folder)
             avg_samples_per_scenario = len(self.cell_positions) // (total_dems_count * included_rain_count + 1)  # +1 避免除以 0
-            
+
             estimated_total_without_rain_filter = total_dems_count * total_rainfall_scenarios * avg_samples_per_scenario
             estimated_excluded_samples = estimated_total_without_rain_filter - len(self.cell_positions)
-            
+
             print(f"[Training Statistics]")
             print(f"  Total rainfall scenarios: {total_rainfall_scenarios}")
             print(f"  Excluded rainfall scenarios: {excluded_rain_count} {test_rain_list}")
             print(f"  Included rainfall scenarios: {included_rain_count}")
             print(f"  Estimated samples excluded by rain filter: ~{estimated_excluded_samples // (total_dems_count + 1)} (~{excluded_rain_count/total_rainfall_scenarios*100:.1f}%)")
-        
+
         # 打印訓練資料統計
         total_scenarios = len(dem_folder) * len([c for c in rainfall.columns if c != 'time']) * len(rainfall)
-        
+
         # 顯示載入的物理模型類型
         model_types = []
         if self.use_spm:
@@ -407,15 +404,15 @@ class floodDataset(Dataset):
         if self.use_ca4d:
             model_types.append("CA4D")
         model_str = " + ".join(model_types) if model_types else "None"
-        
+
         # 新增訓練配置信息
         if not test and test_rain_list is not None:
             print(f"[Training mode] Excluding test rainfall scenarios: {test_rain_list}")
-        
+
         print(f"[OK] Dataset initialized: {len(self.cell_positions)} valid samples")
         print(f"     Physical Models: {model_str}")
         print(f"     (Filtered {total_scenarios - len(self.cell_positions)} samples with missing files)")
-        
+
         # add transform , to tensor and normalize
         self.transform = T.Compose([
             T.ToTensor(),
@@ -432,7 +429,7 @@ class floodDataset(Dataset):
         image_name = f"{dem_folder_name}_{folder_name}_d_{row:03d}_00.png"
         image_path = os.path.join(flood_path, dem_folder_name, folder_name, image_name)
         return image_path
-    
+
     def __find_vx_image(self, cell_position):
         dem, col, row = cell_position
         dem_folder_name = str(dem)
@@ -444,7 +441,7 @@ class floodDataset(Dataset):
         image_name = f"{dem_folder_name}_{folder_name}_vx_{row:03d}_00.png"
         image_path = os.path.join(self.vx_path, dem_folder_name, folder_name, image_name)
         return image_path
-    
+
     def __find_vy_image(self, cell_position):
         dem, col, row = cell_position
         dem_folder_name = str(dem)
@@ -456,11 +453,11 @@ class floodDataset(Dataset):
         image_name = f"{dem_folder_name}_{folder_name}_vy_{row:03d}_00.png"
         image_path = os.path.join(self.vy_path, dem_folder_name, folder_name, image_name)
         return image_path
-    
+
     def __find_dem_image(self, cell_position):
         dem_num = cell_position[0]
         # 直接使用固定路徑
-        dem_folder = Path('C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\dem_png')
+        dem_folder = self.data_root / 'dems' / 'dem_png'
         dem_path = dem_folder / f'{dem_num}.png'
         return str(dem_path)
 
@@ -472,46 +469,40 @@ class floodDataset(Dataset):
         try:
             next_row = row + 1
             next_cell_position = (dem, col, next_row)
-            
+
             # 檢查所有檔案是否存在
             next_flood_path = self.__find_flood_image(next_cell_position, self.flood_path)
             next_vx_path = self.__find_vx_image(next_cell_position)
             next_vy_path = self.__find_vy_image(next_cell_position)
-            
-            if not all([os.path.exists(p) for p in [next_flood_path, next_vx_path, next_vy_path]]):
+
+            if not all([os.path.exists(p) for p in [next_flood_path]]):
                 return None
-                
+
             # 讀取影像
             next_flood_image = cv2.imread(next_flood_path, cv2.IMREAD_UNCHANGED)
-            next_vx_image = cv2.imread(next_vx_path, cv2.IMREAD_UNCHANGED)
-            next_vy_image = cv2.imread(next_vy_path, cv2.IMREAD_UNCHANGED)
-            
+            next_vx_image = None
+            next_vy_image = None
+
             # [MODIFIED] Mask 設為 None
             # next_binary_mask = (next_flood_image <= 250).astype('uint8') ...
             next_binary_mask = None
             next_vx_binary_mask = None
             next_vy_binary_mask = None
-            
+
             # 轉換為 uint8
             next_flood_image = np.array(next_flood_image, dtype=np.uint8)
-            next_vx_image = np.array(next_vx_image, dtype=np.uint8)
-            next_vy_image = np.array(next_vy_image, dtype=np.uint8)
-            
+
             # 轉換為 tensor 並標準化
             next_flood_image = self.transform(next_flood_image)
-            next_vx_image = self.transform(next_vx_image)
-            next_vy_image = self.transform(next_vy_image)
-            
+
             next_flood_image = (next_flood_image - 0.98) / 0.056
-            next_vx_image = (next_vx_image - 0.497) / 0.0043
-            next_vy_image = (next_vy_image - 0.497) / 0.0047
-            
-            return (next_flood_image, next_vx_image, next_vy_image, 
+
+            return (next_flood_image, next_vx_image, next_vy_image,
                     next_binary_mask, next_vx_binary_mask, next_vy_binary_mask)
-                   
+
         except Exception as e:
             return None
-    
+
     def __len__(self):
         return len(self.cell_positions)
 
@@ -519,19 +510,19 @@ class floodDataset(Dataset):
         cell_position = self.cell_positions[index]
         rainfall = self.rainfall[index]
         spm_value = self.spm_values[index]  # [RESTORED] 取得 SPM 值
-        
+
         # [MODIFIED] 處理 t=0 初始狀態 (row == -1)
         if cell_position[2] == -1:
             # t=0 時刻：回傳全零狀態
             dem_path = self.__find_dem_image(cell_position)
             dem_image = cv2.imread(dem_path, cv2.IMREAD_UNCHANGED)
-            
+
             if dem_image is None:
                 raise FileNotFoundError(f"Failed to load DEM image: {dem_path}")
-            
+
             if len(dem_image.shape) == 3:
                 dem_image = dem_image[:,:,0]
-            
+
             dem_cur_state = self.dem_stat[self.dem_stat['Filename'] == cell_position[0]]
             min_elev = int(dem_cur_state['Min Elevation'].iloc[0])
             max_elev = int(dem_cur_state['Max Elevation'].iloc[0])
@@ -541,11 +532,11 @@ class floodDataset(Dataset):
             dem_image = np.array(dem_image, dtype=np.uint8)
             dem_image = self.transform(dem_image)
             dem_image = (dem_image - 0.18) / 0.22
-            
+
             # 初始狀態：全零
             zero_image = torch.zeros((1, 256, 256))
             zero_rainfall = np.zeros(24, dtype=np.int64)
-            
+
             # SPM
             dem_str = str(cell_position[0])
             spm_path = os.path.join(self.spm_folder, dem_str, f'SPM_{dem_str}_{spm_value}.png')
@@ -554,10 +545,10 @@ class floodDataset(Dataset):
                 spm_image = self.transform(spm_image)
             else:
                 spm_image = torch.zeros((1, 256, 256))
-            
+
             # CA4D 初始狀態也為零
-            ca4d_image = torch.zeros((3, 256, 256))
-            
+            ca4d_image = torch.zeros((1, 256, 256))
+
             # next_data 為下一個時間步 (row=0)
             next_data = None
             if self.test:
@@ -567,32 +558,32 @@ class floodDataset(Dataset):
                         next_data = (None, None, None, None, None, None)
                 except:
                     pass
-            
+
             max_depth = self.terrain_depths.get(cell_position[0], 4.0)
             dem_id = cell_position[0]
-            
-            return (zero_image, zero_image, zero_image, dem_image,
+
+            return (zero_image, None, None, dem_image,
                     None, None, None,  # binary masks
                     zero_rainfall, "t0_initial", "t0_initial", "t0_initial",
                     spm_image,
                     ca4d_image,
                     next_data, max_depth, dem_id)
-        
+
         # 正常邏輯（t=1~24）
         dem_path = self.__find_dem_image(cell_position)
-        
+
         # ===== 獲取地形深度（用於物理損失）=====
         dem_id = cell_position[0]
         max_depth = self.terrain_depths.get(dem_id, 4.0)  # 預設 4.0m
-        
+
         # 讀取 DEM
         dem_image = cv2.imread(dem_path, cv2.IMREAD_UNCHANGED)
         if dem_image is None:
             raise FileNotFoundError(f"Failed to load DEM image: {dem_path}")
-        
+
         if len(dem_image.shape) == 3:
             dem_image = dem_image[:,:,0]
-        
+
         dem_cur_state = self.dem_stat[self.dem_stat['Filename'] == cell_position[0]]
         min_elev = int(dem_cur_state['Min Elevation'].iloc[0])
         max_elev = int(dem_cur_state['Max Elevation'].iloc[0])
@@ -600,62 +591,52 @@ class floodDataset(Dataset):
         dem_image = (real_height - (-3)) / (125 + 3) * 255
         dem_image = np.clip(dem_image, 0, 255)
         dem_image = np.array(dem_image, dtype=np.uint8)
-        
+
         # [MODIFIED] 根據設定載入 SPM 或 CA4D
         dem_str = str(cell_position[0])
         col_num = cell_position[1]
         row_num = cell_position[2]
-        
+
         # 初始化為 None
         spm_image = None
         ca4d_image = None
-        
+
         # 只在啟用時才載入 SPM
         if self.use_spm:
             # SPM 格式: SPM_{DEM}_{rainfall}.png
             spm_path = os.path.join(self.spm_folder, dem_str, f'SPM_{dem_str}_{spm_value}.png')
             spm_image = cv2.imread(spm_path, cv2.IMREAD_GRAYSCALE)
-            
+
             if spm_image is None:
                 raise FileNotFoundError(f"SPM image not found: {spm_path}")
-            
+
             # SPM 轉為 Tensor (保持 [0, 1])
             spm_image = self.transform(spm_image)
-        
+
         # 只在啟用時才載入 CA4D
         if self.use_ca4d:
             # CA4D 格式: ca4d_{DEM}_rf{scenario}_{channel}_{timestep}.png
             # 注意: scenario 是小寫 rf (不是 RF), 且沒有 _00 後綴
             rf_scenario = f"rf{col_num:02d}"  # 小寫 rf
             time_str = f"{row_num:03d}"   # timestep (001, 002, ...)
-            
+
             # CA4D 資料夾結構: ca4d_folder/d/{DEM}/rf{scenario}/ca4d_{DEM}_rf{scenario}_d_{timestep}.png
-            path_ca4d_d = os.path.join(self.ca4d_folder, 'd', dem_str, rf_scenario, 
+            path_ca4d_d = os.path.join(self.ca4d_folder, 'd', dem_str, rf_scenario,
                                            f"ca4d_{dem_str}_{rf_scenario}_d_{time_str}.png")
-            path_ca4d_vx = os.path.join(self.ca4d_folder, 'vx', dem_str, rf_scenario,
-                                            f"ca4d_{dem_str}_{rf_scenario}_vx_{time_str}.png")
-            path_ca4d_vy = os.path.join(self.ca4d_folder, 'vy', dem_str, rf_scenario,
-                                            f"ca4d_{dem_str}_{rf_scenario}_vy_{time_str}.png")
-            
+
             ca4d_d = cv2.imread(path_ca4d_d, cv2.IMREAD_GRAYSCALE)
-            ca4d_vx = cv2.imread(path_ca4d_vx, cv2.IMREAD_GRAYSCALE)
-            ca4d_vy = cv2.imread(path_ca4d_vy, cv2.IMREAD_GRAYSCALE)
-            
-            if any(img is None for img in [ca4d_d, ca4d_vx, ca4d_vy]):
+
+            if any(img is None for img in [ca4d_d]):
                 print(f"[WARNING] CA4D not found for {path_ca4d_d}, using zero tensor")
-                ca4d_image = torch.zeros((3, 256, 256))
+                ca4d_image = torch.zeros((1, 256, 256))
             else:
                 # CA4D Normalize [0, 255] -> [-1, 1]
                 ca4d_d = self.transform(ca4d_d)
-                ca4d_vx = self.transform(ca4d_vx)
-                ca4d_vy = self.transform(ca4d_vy)
-                
+
                 ca4d_d = (ca4d_d * 2) - 1
-                ca4d_vx = (ca4d_vx * 2) - 1
-                ca4d_vy = (ca4d_vy * 2) - 1
-                
-                # [3, H, W]
-                ca4d_image = torch.cat([ca4d_d, ca4d_vx, ca4d_vy], dim=0)
+
+                # [1, H, W]
+                ca4d_image = ca4d_d
 
         # 讀取 Ground Truth
         rainfall = np.array(rainfall, dtype=np.int64)
@@ -665,43 +646,37 @@ class floodDataset(Dataset):
         vy_path = self.__find_vy_image(cell_position)
 
         flood_image = cv2.imread(flood_path, cv2.IMREAD_UNCHANGED)
-        vx_image = cv2.imread(vx_path, cv2.IMREAD_UNCHANGED)
-        vy_image = cv2.imread(vy_path, cv2.IMREAD_UNCHANGED)
-        
-        if any(img is None for img in [flood_image, vx_image, vy_image]):
+        vx_image = None
+        vy_image = None
+
+        if any(img is None for img in [flood_image]):
              raise FileNotFoundError("GT images not found")
-        
+
         # [MODIFIED] Mask 設為 None
         # flood_binary_mask = (flood_image <= 250).astype('uint8') ...
         flood_binary_mask = None
         vx_binary_mask = None
         vy_binary_mask = None
-        
+
         # Convert to proper dtype
         flood_image = np.array(flood_image, dtype=np.uint8)
-        vx_image = np.array(vx_image, dtype=np.uint8)
-        vy_image = np.array(vy_image, dtype=np.uint8)
 
         # Apply transforms
         dem_image = self.transform(dem_image)
         flood_image = self.transform(flood_image)
-        vx_image = self.transform(vx_image)
-        vy_image = self.transform(vy_image)
 
         # Normalize
         dem_image = (dem_image - 0.18) / 0.22
         flood_image = (flood_image - 0.986) / 0.0405
-        vx_image = (vx_image - 0.562) / 0.078
-        vy_image = (vy_image - 0.495) / 0.0789
-        
-        # Get next timestep data
-        next_data = self.get_next_timestep_data(cell_position[0], cell_position[1], cell_position[2])
 
-        return (flood_image, vx_image, vy_image, dem_image, 
-                flood_binary_mask, vx_binary_mask, vy_binary_mask, 
-                rainfall, flood_path, vx_path, vy_path, 
-                spm_image, 
-                ca4d_image, 
+        # Get next timestep data
+        next_data = None
+
+        return (flood_image, vx_image, vy_image, dem_image,
+                flood_binary_mask, vx_binary_mask, vy_binary_mask,
+                rainfall, flood_path, vx_path, vy_path,
+                spm_image,
+                ca4d_image,
                 next_data,  # ← 同時包含 SPM 和 CA4D
                 max_depth, dem_id)
 
@@ -709,33 +684,41 @@ class singleDEMFloodDataset(Dataset):
     def __init__(self, opt, val=False, test=False):
         super(singleDEMFloodDataset, self).__init__()
         self.opt = opt
+        self.data_root = Path(getattr(opt, "dataset_dir", None) or Path(__file__).resolve().parents[2] / "data").expanduser().resolve()
         self.test = test
-        
+
         # 控制載入哪個物理模型 (從 opt 參數讀取，使用 getattr 避免 AttributeError)
         self.use_spm = getattr(opt, 'spm', False) if opt is not None else False
         self.use_ca4d = getattr(opt, 'ca4d', False) if opt is not None else False
-        
-        dem_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\tainan_dem.png'
-        self.spm_folder = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\SPM_output'
-        self.dem = cv2.imread(dem_path, cv2.IMREAD_UNCHANGED)[:,:,0]
-        
+
+        dem_path = str(self.data_root / 'tainan_dem.png')
+        self.spm_folder = str(self.data_root / 'SPM_output')
+        self.dem = cv2.imread(dem_path, cv2.IMREAD_UNCHANGED)
+        if self.dem is None:
+            raise FileNotFoundError(
+                f"Cannot read DEM image: {dem_path}. "
+                "Set --dataset-dir to the data root containing tainan_dem.png, train_rf.csv and train/."
+            )
+        if self.dem.ndim == 3:
+            self.dem = self.dem[:, :, 0]
+
         # [MODIFIED] CA4D Folder - 使用 ca4d 資料夾結構
         if test:
-            self.ca4d_folder = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\ca4d\\single_test'
+            self.ca4d_folder = str(self.data_root / 'ca4d/single_test')
         else:
             # 訓練模式使用 single_train
-            self.ca4d_folder = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\ca4d\\single_train'
+            self.ca4d_folder = str(self.data_root / 'ca4d/single_train')
 
-        self.flood_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\train\\depth'
-        self.VX_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\train\\Vx'
-        self.VY_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\train\\Vy'
+        self.flood_path = str(self.data_root / 'train/depth')
+        self.VX_path = str(self.data_root / 'train/Vx')
+        self.VY_path = str(self.data_root / 'train/Vy')
 
-        rainfall_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\train_rf.csv'
+        rainfall_path = str(self.data_root / 'train_rf.csv')
         if test:
-            rainfall_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\test_rf.csv'
-            self.flood_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\test\\depth'
-            self.VX_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\test\\Vx'
-            self.VY_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\test\\Vy'
+            rainfall_path = str(self.data_root / 'test_rf.csv')
+            self.flood_path = str(self.data_root / 'test/depth')
+            self.VX_path = str(self.data_root / 'test/Vx')
+            self.VY_path = str(self.data_root / 'test/Vy')
 
         rainfall = pd.read_csv(rainfall_path)
         rainfall = rainfall.iloc[:, :]
@@ -743,7 +726,7 @@ class singleDEMFloodDataset(Dataset):
         rainfall_cum_value = []
         cell_positions = []
         spm_values = []
-        
+
         val = False
         for col in rainfall.columns:
             if col == 'time':
@@ -766,40 +749,36 @@ class singleDEMFloodDataset(Dataset):
                 dem_str = str(dem_num)
                 rf_scenario = f"rf{col_num:02d}"
                 time_str = f"{row:03d}"
-                
+
                 # 檢查 SPM
                 spm_path = os.path.join(self.spm_folder, f'SPM_{dem_str}_{spm_value}.png')
-                if not os.path.exists(spm_path):
+                if self.use_spm and not os.path.exists(spm_path):
                     continue
-                
-                # 檢查 CA4D (所有 3 通道)
+
+                # CA4D depth-only guidance (d).
                 path_ca4d_d = os.path.join(self.ca4d_folder, 'd', dem_str, rf_scenario,
                                            f"ca4d_{dem_str}_{rf_scenario}_d_{time_str}.png")
-                path_ca4d_vx = os.path.join(self.ca4d_folder, 'vx', dem_str, rf_scenario,
-                                            f"ca4d_{dem_str}_{rf_scenario}_vx_{time_str}.png")
-                path_ca4d_vy = os.path.join(self.ca4d_folder, 'vy', dem_str, rf_scenario,
-                                            f"ca4d_{dem_str}_{rf_scenario}_vy_{time_str}.png")
-                
-                if not all([os.path.exists(p) for p in [path_ca4d_d, path_ca4d_vx, path_ca4d_vy]]):
+
+                if self.use_ca4d and not all([os.path.exists(p) for p in [path_ca4d_d]]):
                     continue
-                
+
                 # 檢查 Ground Truth
                 if col_num < 100:
                     folder_name = f"RF{col_num:02d}"
                 else:
                     folder_name = f"RF{col_num}"
-                
+
                 flood_name = f"{folder_name}_d_{row:03d}_00.png"
                 vx_name = f"{folder_name}_vx_{row:03d}_00.png"
                 vy_name = f"{folder_name}_vy_{row:03d}_00.png"
-                
+
                 flood_file = os.path.join(self.flood_path, folder_name, flood_name)
                 vx_file = os.path.join(self.VX_path, folder_name, vx_name)
                 vy_file = os.path.join(self.VY_path, folder_name, vy_name)
-                
-                if not all([os.path.exists(p) for p in [flood_file, vx_file, vy_file]]):
+
+                if not all([os.path.exists(p) for p in [flood_file]]):
                     continue
-                
+
                 # [RESTORED] 所有檔案都存在，記錄此樣本
                 spm_values.append(spm_value)
                 rainfall_cum_value.append(temp)
@@ -811,12 +790,12 @@ class singleDEMFloodDataset(Dataset):
             unique_cols = set()
             for col_num, row in cell_positions:
                 unique_cols.add(col_num)
-            
+
             # 為每個入流點添加一個 t=0 初始狀態樣本 (row=-1 標記)
             t0_samples = []
             t0_rainfall = []
             t0_spm = []
-            
+
             for col_num in sorted(unique_cols):
                 # 查找該入流點的第一個樣本（用於獲取 SPM 值）
                 first_rainfall = None
@@ -826,25 +805,25 @@ class singleDEMFloodDataset(Dataset):
                         first_rainfall = rainfall_cum_value[i]
                         first_spm = spm_values[i]
                         break
-                
+
                 if first_rainfall is not None:
                     t0_samples.append((col_num, -1))  # -1 標記為 t=0
                     t0_rainfall.append(first_rainfall)
                     t0_spm.append(first_spm)
-            
+
             # 在開頭插入 t=0 樣本
             cell_positions = t0_samples + cell_positions
             rainfall_cum_value = t0_rainfall + rainfall_cum_value
             spm_values = t0_spm + spm_values
-            
+
             print(f"[Test mode] Added {len(t0_samples)} t=0 initial state samples")
             print(f"[Test mode] Total samples: {len(cell_positions)} (t=0 ~ t=24 小時)")
-        
+
         self.rainfall = rainfall_cum_value
         self.cell_positions = cell_positions
         self.spm_values = spm_values
         print(f"singleDEMFloodDataset initialized: {len(self.cell_positions)} samples")
-        
+
         self.transform = T.Compose([
             T.ToTensor(),
         ])
@@ -863,7 +842,7 @@ class singleDEMFloodDataset(Dataset):
         image_name = f"{folder_name}_d_{row:03d}_00.png"
         image_path = os.path.join(flood_path, folder_name, image_name)
         return image_path
-    
+
     def __find_Vx_image(self, cell_position, VX_path):
         col, row = cell_position
         if col < 100:
@@ -898,25 +877,25 @@ class singleDEMFloodDataset(Dataset):
         try:
             next_row = row + 1
             next_cell_position = (col, next_row)
-            
+
             next_flood_path = self.__find_image(next_cell_position, self.flood_path)
-            
+
             if not os.path.exists(next_flood_path):
                 return None
-                
+
             next_flood_image = cv2.imread(next_flood_path, cv2.IMREAD_UNCHANGED)
-            
+
             # [MODIFIED] Mask 設為 None
             # next_binary_mask = (next_flood_image <= 250).astype('uint8') ...
             next_binary_mask = None
-            
+
             next_flood_image = np.array(next_flood_image, dtype=np.uint8)
-            
+
             next_flood_image = self.transform(next_flood_image)
             next_flood_image = (next_flood_image - 0.987) / 0.0343
-            
+
             return (next_flood_image, next_binary_mask)
-                   
+
         except Exception as e:
             return None
 
@@ -926,26 +905,26 @@ class singleDEMFloodDataset(Dataset):
     def __getitem__(self, index):
         dem_num = 1  # singleDEM 固定為 1
         dem_str = str(dem_num)
-        
+
         cell_position = self.cell_positions[index]
         rainfall = self.rainfall[index]
         spm_value = self.spm_values[index]  # [RESTORED] 取得 SPM 值
         rainfall = np.array(rainfall, dtype=np.int64)
-        
+
         col_num = cell_position[0]
         row_num = cell_position[1]
-        
+
         # [MODIFIED] 處理 t=0 初始狀態 (row == -1)
         if row_num == -1:
             # t=0 時刻：回傳全零狀態
             dem_image = self.dem
             dem_image = self.transform(dem_image)
             dem_image = (dem_image - 0.547) / 0.282
-            
+
             # 初始狀態：全零
             zero_image = torch.zeros((1, 256, 256))
             zero_rainfall = np.zeros(24, dtype=np.int64)
-            
+
             # SPM
             spm_path = os.path.join(self.spm_folder, f'SPM_{dem_str}_{spm_value}.png')
             try:
@@ -956,29 +935,29 @@ class singleDEMFloodDataset(Dataset):
                     spm_image = torch.zeros((1, 256, 256))
             except:
                 spm_image = torch.zeros((1, 256, 256))
-            
+
             # CA4D 初始狀態也為零
-            ca4d_image = torch.zeros((3, 256, 256))
-            
+            ca4d_image = torch.zeros((1, 256, 256))
+
             # next_data 為下一個時間步 (row=0)
-            next_data = self.get_next_timestep_data(col_num, 0) if self.test else None
-            
+            next_data = None
+
             max_depth = 4.0
             dem_id = 1
-            
-            return (zero_image, zero_image, zero_image, dem_image,
+
+            return (zero_image, None, None, dem_image,
                     None, None, None,  # binary masks
                     zero_rainfall, "t0_initial", "t0_initial", "t0_initial",
                     spm_image,
                     ca4d_image,
                     next_data, max_depth, dem_id)
-        
+
         # 正常邏輯（t=1~24）
         # ===== 讀取 DEM =====
         dem_image = self.dem
         dem_image = self.transform(dem_image)
         dem_image = (dem_image - 0.547) / 0.282
-        
+
         # ===== 讀取 SPM (1 通道) =====
         spm_path = os.path.join(self.spm_folder, f'SPM_{dem_str}_{spm_value}.png')
         try:
@@ -991,86 +970,68 @@ class singleDEMFloodDataset(Dataset):
         except Exception as e:
             print(f"[WARNING] Failed to load SPM: {spm_path}, {e}")
             spm_image = torch.zeros((1, 256, 256))
-        
-        # ===== 讀取 CA4D (3 通道: d, vx, vy) =====
+
+        # CA4D depth-only guidance (d).
         rf_scenario = f"rf{col_num:02d}"
         time_str = f"{row_num:03d}"
-        
+
         path_ca4d_d = os.path.join(self.ca4d_folder, 'd', dem_str, rf_scenario,
                                    f"ca4d_{dem_str}_{rf_scenario}_d_{time_str}.png")
-        path_ca4d_vx = os.path.join(self.ca4d_folder, 'vx', dem_str, rf_scenario,
-                                    f"ca4d_{dem_str}_{rf_scenario}_vx_{time_str}.png")
-        path_ca4d_vy = os.path.join(self.ca4d_folder, 'vy', dem_str, rf_scenario,
-                                    f"ca4d_{dem_str}_{rf_scenario}_vy_{time_str}.png")
-        
+
         ca4d_image = None
         try:
-            if all([os.path.exists(p) for p in [path_ca4d_d, path_ca4d_vx, path_ca4d_vy]]):
+            if all([os.path.exists(p) for p in [path_ca4d_d]]):
                 ca4d_d = cv2.imread(path_ca4d_d, cv2.IMREAD_GRAYSCALE)
-                ca4d_vx = cv2.imread(path_ca4d_vx, cv2.IMREAD_GRAYSCALE)
-                ca4d_vy = cv2.imread(path_ca4d_vy, cv2.IMREAD_GRAYSCALE)
-                
-                if all(img is not None for img in [ca4d_d, ca4d_vx, ca4d_vy]):
+
+                if all(img is not None for img in [ca4d_d]):
                     ca4d_d = self.transform(ca4d_d)
-                    ca4d_vx = self.transform(ca4d_vx)
-                    ca4d_vy = self.transform(ca4d_vy)
-                    
+
                     # [0, 1] -> [-1, 1]
-                    ca4d_image = torch.cat([
-                        (ca4d_d * 2) - 1,
-                        (ca4d_vx * 2) - 1,
-                        (ca4d_vy * 2) - 1
-                    ], dim=0)  # [3, H, W]
+                    ca4d_image = (ca4d_d * 2) - 1  # [1, H, W]
         except Exception as e:
             print(f"[WARNING] Failed to load CA4D: {e}")
-        
+
         if ca4d_image is None:
-            ca4d_image = torch.zeros((3, 256, 256))
-        
+            ca4d_image = torch.zeros((1, 256, 256))
+
         # ===== 讀取 Ground Truth (d, vx, vy) =====
         if col_num < 100:
             folder_name = f"RF{col_num:02d}"
         else:
             folder_name = f"RF{col_num}"
-        
+
         image_path = self.__find_image(cell_position, self.flood_path)
         vx_image_path = self.__find_Vx_image(cell_position, self.VX_path)
         vy_image_path = self.__find_Vy_image(cell_position, self.VY_path)
 
         flood_image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
-        vx_image = cv2.imread(vx_image_path, cv2.IMREAD_UNCHANGED)
-        vy_image = cv2.imread(vy_image_path, cv2.IMREAD_UNCHANGED)
+        vx_image = None
+        vy_image = None
 
         # Mask 設為 None
         binary_mask = None
         vx_binary_mask = None
         vy_binary_mask = None
-        
+
         flood_image = np.array(flood_image, dtype=np.uint8)
-        vx_image = np.array(vx_image, dtype=np.uint8)
-        vy_image = np.array(vy_image, dtype=np.uint8)
-        
+
         # 轉換為 Tensor
         flood_image = self.transform(flood_image)
-        vx_image = self.transform(vx_image)
-        vy_image = self.transform(vy_image)
 
         # 標準化
         flood_image = (flood_image - 0.987) / 0.0343
-        vx_image = (vx_image - 0.497) / 0.0043
-        vy_image = (vy_image - 0.497) / 0.0047
 
         # 取得下一時間步資料
         col, row = cell_position
-        next_data = self.get_next_timestep_data(col, row)
-        
+        next_data = None
+
         # 回傳: 同時包含 SPM 和 CA4D
         max_depth = 4.0
         dem_id = 1
-        
-        return (flood_image, vx_image, vy_image, dem_image, 
-                binary_mask, vx_binary_mask, vy_binary_mask, 
-                rainfall, image_path, vx_image_path, vy_image_path, 
+
+        return (flood_image, vx_image, vy_image, dem_image,
+                binary_mask, vx_binary_mask, vy_binary_mask,
+                rainfall, image_path, vx_image_path, vy_image_path,
                 spm_image,
                 ca4d_image,
                 next_data, max_depth, dem_id)
@@ -1080,14 +1041,15 @@ class yilanDataset(Dataset):
     def __init__(self, opt, test_dem_list=None):
         super(yilanDataset, self).__init__()
         self.opt = opt
-        
+        self.data_root = Path(getattr(opt, "dataset_dir", None) or Path(__file__).resolve().parents[2] / "data").expanduser().resolve()
+
         # ===== 模型配置標誌 =====
         self.use_spm = getattr(opt, 'spm', False) if opt is not None else False
         self.use_ca4d = getattr(opt, 'ca4d', False) if opt is not None else False
-        
+
         # 資料根路徑
-        base_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\yilan_new'
-        
+        base_path = str(self.data_root / 'yilan_new')
+
         # ===== 路徑設定 =====
         self.dem_folder = os.path.join(base_path, 'dem')
         self.tuflow_d_folder = os.path.join(base_path, 'tuflow', 'd')
@@ -1095,96 +1057,96 @@ class yilanDataset(Dataset):
         self.tuflow_vy_folder = os.path.join(base_path, 'tuflow', 'vy')
         self.ca4d_folder = os.path.join(base_path, 'ca4d')
         self.spm_folder = os.path.join(base_path, 'spm')
-        
+
         # ===== 載入統計資訊 =====
         maxmin_dem_path = os.path.join(base_path, 'maxmin_dem.csv')
         self.dem_stats = pd.read_csv(maxmin_dem_path)
-        dem_dict = dict(zip(self.dem_stats['terrain'].astype(str), 
+        dem_dict = dict(zip(self.dem_stats['terrain'].astype(str),
                            zip(self.dem_stats['min_elevation'], self.dem_stats['max_elevation'])))
-        
+
         maxmin_duv_path = os.path.join(base_path, 'maxmin_duv.csv')
         duv_stats = pd.read_csv(maxmin_duv_path)
         self.terrain_depths = dict(zip(duv_stats['terrain'].astype(str), duv_stats['depth_max']))
         print(f"[yilanDataset] Loaded terrain depths: {self.terrain_depths}")
-        
+
         rainfall_path = os.path.join(base_path, 'scenario_rainfall.csv')
         rainfall_df = pd.read_csv(rainfall_path)
-        
+
         # ===== [FIXED] 與 floodDataset 一致的降雨處理邏輯 =====
         self.cell_positions = []  # (dem_name, rf_scenario, timestep)
         self.rainfall_values = []  # [FIXED] 儲存 24 步序列 (與 floodDataset 一致)
         self.spm_values = []       # [FIXED] 儲存對應的 SPM 值
         self.dem_info = {}
-        
+
         dem_names = ['yilan01', 'yilan02', 'yilan03']
-        
+
         for dem_name in dem_names:
             dem_png_path = os.path.join(self.dem_folder, f'{dem_name}.png')
             if not os.path.exists(dem_png_path):
                 print(f"[WARNING] DEM not found: {dem_png_path}")
                 continue
-            
+
             if dem_name in dem_dict:
                 min_elev, max_elev = dem_dict[dem_name]
                 self.dem_info[dem_name] = {'min': min_elev, 'max': max_elev}
-            
+
             # ===== [FIXED] 與 floodDataset 相同的遍歷邏輯 =====
             for col_idx, col in enumerate(rainfall_df.columns):
                 if col == 'time':
                     continue
-                
+
                 try:
                     flow_num = int(col.split('_')[1])
                 except:
                     continue
-                
+
                 # [FIXED] 逐時間步遍歷並累積降雨
                 cell_values = []
                 for row_idx in range(25):
                     # 取得該時間步的降雨值
                     cell_value = rainfall_df.iloc[row_idx][col]
-                    
+
                     # [FIXED] 向上取整 (與 floodDataset 一致)
                     cell_values.append(np.ceil(cell_value))
-                    
+
                     # [FIXED] 構造 24 步序列 (與 floodDataset 相同)
                     temp = [0] * (24 - len(cell_values))
                     temp.extend(cell_values)
                     if len(temp) == 25:
                         temp = temp[1:]
-                    
+
                     # 計算累積降雨
                     sum_rainfall = sum(temp[:])
-                    
+
                     # [FIXED] 根據 ceil 後的降雨計算 SPM 值
                     spm_value = int(np.ceil(sum_rainfall / 5) * 5)
-                    
+
                     # 儲存樣本
                     self.cell_positions.append((dem_name, flow_num, row_idx))
                     self.rainfall_values.append(np.array(temp[:], dtype=np.int64))  # [FIXED] 儲存 24 步序列
                     self.spm_values.append(spm_value)
-        
+
         print(f"[yilanDataset] Initialized with {len(self.cell_positions)} samples")
         print(f"              Terrain: yilan1, yilan2, yilan3")
         print(f"              Scenarios: 10 inflow points × 25 timesteps (0-24 hours)")
-        
+
         self.transform = T.Compose([
             T.ToTensor(),
         ])
-    
+
     def __len__(self):
         return len(self.cell_positions)
-    
+
     def __find_dem_image(self, dem_name):
         """根據 DEM 名稱找到對應的 DEM 圖像路徑"""
         dem_path = os.path.join(self.dem_folder, f'{dem_name}.png')
         return dem_path
-    
+
     def __find_tuflow_image(self, dem_name, flow_num, timestep, channel):
         """
         找到 TUFLOW 模擬結果圖像
         channel: 'd', 'vx', 或 'vy'
-        
+
         路徑格式: tuflow/{channel}/yilan{i}/RF{flow:02d}/{dem_name}_RF{flow:02d}_{channel}_{timestep:03d}_00.png
         例如: yilan1_RF01_d_000_00.png
         """
@@ -1196,30 +1158,25 @@ class yilanDataset(Dataset):
             folder = self.tuflow_vy_folder
         else:
             raise ValueError(f"Unknown channel: {channel}")
-        
+
         filename = f"{dem_name}_RF{flow_num:02d}_{channel}_{timestep:03d}_00.png"
         rf_folder = f"RF{flow_num:02d}"
         image_path = os.path.join(folder, dem_name, rf_folder, filename)
         return image_path
-    
+
     def __find_ca4d_images(self, dem_name, flow_num, timestep):
         """
         找到 CA4D 引導圖像 (d, vx, vy)
-        回傳字典: {'d': path_d, 'vx': path_vx, 'vy': path_vy}
         """
         rf_scenario = f"rf{flow_num:02d}"
         time_str = f"{timestep:03d}"
-        
+
         paths = {
             'd': os.path.join(self.ca4d_folder, 'd', dem_name, rf_scenario,
                             f"ca4d_{dem_name}_{rf_scenario}_d_{time_str}.png"),
-            'vx': os.path.join(self.ca4d_folder, 'vx', dem_name, rf_scenario,
-                             f"ca4d_{dem_name}_{rf_scenario}_vx_{time_str}.png"),
-            'vy': os.path.join(self.ca4d_folder, 'vy', dem_name, rf_scenario,
-                             f"ca4d_{dem_name}_{rf_scenario}_vy_{time_str}.png")
         }
         return paths
-    
+
     def get_next_timestep_data(self, dem_name, flow_num, timestep):
         """
         獲取下一個時間步的水深資料 (timestep+1)
@@ -1229,40 +1186,40 @@ class yilanDataset(Dataset):
             next_timestep = timestep + 1
             if next_timestep > 24:
                 return None
-            
+
             next_d_path = self.__find_tuflow_image(dem_name, flow_num, next_timestep, 'd')
-            
+
             if not os.path.exists(next_d_path):
                 return None
-            
+
             next_flood = cv2.imread(next_d_path, cv2.IMREAD_UNCHANGED)
             if next_flood is None:
                 return None
-            
+
             next_flood = np.array(next_flood, dtype=np.uint8)
             next_flood = self.transform(next_flood)
             next_flood = (next_flood - 0.9738) / 0.05726
-            
+
             return (next_flood, None)
         except Exception as e:
             print(f"[WARNING] Failed to load next timestep data: {e}")
             return None
-    
+
     def __getitem__(self, index):
         dem_name, flow_num, timestep = self.cell_positions[index]
         rainfall_array = self.rainfall_values[index]  # [FIXED] 取得 24 步序列
         spm_value = self.spm_values[index]            # [FIXED] 取得對應的 SPM 值
-        
+
         # ===== 讀取 DEM =====
         dem_path = self.__find_dem_image(dem_name)
         dem_image = cv2.imread(dem_path, cv2.IMREAD_UNCHANGED)
-        
+
         if dem_image is None:
             raise FileNotFoundError(f"Failed to load DEM: {dem_path}")
-        
+
         if len(dem_image.shape) == 3:
             dem_image = dem_image[:, :, 0]
-        
+
         if dem_name in self.dem_info:
             min_elev = self.dem_info[dem_name]['min']
             max_elev = self.dem_info[dem_name]['max']
@@ -1270,23 +1227,21 @@ class yilanDataset(Dataset):
             real_height = dem_image / 255.0 * elev_range + min_elev
             dem_normalized = (real_height - (-3)) / (125 + 3) * 255
             dem_image = np.clip(dem_normalized, 0, 255).astype(np.uint8)
-        
+
         # ===== 讀取 TUFLOW 真值 =====
         d_path = self.__find_tuflow_image(dem_name, flow_num, timestep, 'd')
         vx_path = self.__find_tuflow_image(dem_name, flow_num, timestep, 'vx')
         vy_path = self.__find_tuflow_image(dem_name, flow_num, timestep, 'vy')
-        
+
         flood_image = cv2.imread(d_path, cv2.IMREAD_UNCHANGED)
-        vx_image = cv2.imread(vx_path, cv2.IMREAD_UNCHANGED)
-        vy_image = cv2.imread(vy_path, cv2.IMREAD_UNCHANGED)
-        
-        if any(img is None for img in [flood_image, vx_image, vy_image]):
+        vx_image = None
+        vy_image = None
+
+        if any(img is None for img in [flood_image]):
             raise FileNotFoundError(f"Failed to load TUFLOW images for {dem_name}_rf{flow_num:02d}_{timestep:03d}")
-        
+
         flood_image = np.array(flood_image, dtype=np.uint8)
-        vx_image = np.array(vx_image, dtype=np.uint8)
-        vy_image = np.array(vy_image, dtype=np.uint8)
-        
+
         # ===== 讀取 CA4D 引導 =====
         ca4d_image = None
         if self.use_ca4d:
@@ -1294,31 +1249,23 @@ class yilanDataset(Dataset):
             try:
                 if all(os.path.exists(p) for p in ca4d_paths.values()):
                     ca4d_d = cv2.imread(ca4d_paths['d'], cv2.IMREAD_GRAYSCALE)
-                    ca4d_vx = cv2.imread(ca4d_paths['vx'], cv2.IMREAD_GRAYSCALE)
-                    ca4d_vy = cv2.imread(ca4d_paths['vy'], cv2.IMREAD_GRAYSCALE)
-                    
-                    if all(img is not None for img in [ca4d_d, ca4d_vx, ca4d_vy]):
+
+                    if all(img is not None for img in [ca4d_d]):
                         ca4d_d = self.transform(ca4d_d)
-                        ca4d_vx = self.transform(ca4d_vx)
-                        ca4d_vy = self.transform(ca4d_vy)
-                        
-                        ca4d_image = torch.cat([
-                            (ca4d_d * 2) - 1,
-                            (ca4d_vx * 2) - 1,
-                            (ca4d_vy * 2) - 1
-                        ], dim=0)
+
+                        ca4d_image = (ca4d_d * 2) - 1
             except Exception as e:
                 print(f"[WARNING] Failed to load CA4D for {dem_name}: {e}")
-        
+
         if ca4d_image is None:
-            ca4d_image = torch.zeros((3, 256, 256))
-        
+            ca4d_image = torch.zeros((1, 256, 256))
+
         # ===== 讀取 SPM 引導 =====
         spm_image = None
         if self.use_spm:
             # [FIXED] 使用與 floodDataset 相同的 SPM 值邏輯
             spm_path = os.path.join(self.spm_folder, dem_name, f'SPM_{dem_name}_{spm_value}.png')
-            
+
             try:
                 if os.path.exists(spm_path):
                     spm_image = cv2.imread(spm_path, cv2.IMREAD_GRAYSCALE)
@@ -1326,49 +1273,45 @@ class yilanDataset(Dataset):
                         spm_image = self.transform(spm_image)
             except Exception as e:
                 print(f"[WARNING] Failed to load SPM: {spm_path}, {e}")
-        
+
         if spm_image is None:
             spm_image = torch.zeros((1, 256, 256))
-        
+
         # ===== 影像標準化 =====
         dem_image = self.transform(dem_image)
         flood_image = self.transform(flood_image)
-        vx_image = self.transform(vx_image)
-        vy_image = self.transform(vy_image)
-        
+
         dem_image = (dem_image - 0.2643) / 0.17347
         flood_image = (flood_image - 0.9738) / 0.05726
-        vx_image = (vx_image - 0.4191) / 0.1852
-        vy_image = (vy_image - 0.4699) / 0.1401
-        
+
         # ===== 取得下一時間步資料 =====
-        next_data = self.get_next_timestep_data(dem_name, flow_num, timestep)
-        
+        next_data = None
+
         max_depth = self.terrain_depths.get(dem_name, 4.0)
         dem_id = int(dem_name.replace('yilan', ''))
-        
+
         return (flood_image, vx_image, vy_image, dem_image,
                 None, None, None,
                 rainfall_array, d_path, vx_path, vy_path,  # [FIXED] 使用 24 步序列
                 spm_image,
                 ca4d_image,
                 next_data, max_depth, dem_id)
-    
+
     def __getitem__(self, index):
         dem_name, flow_num, timestep = self.cell_positions[index]
         rainfall_array = self.rainfall_values[index]  # [FIXED] 取得 24 步序列
         spm_value = self.spm_values[index]            # [FIXED] 取得對應的 SPM 值
-        
+
         # ===== 讀取 DEM =====
         dem_path = self.__find_dem_image(dem_name)
         dem_image = cv2.imread(dem_path, cv2.IMREAD_UNCHANGED)
-        
+
         if dem_image is None:
             raise FileNotFoundError(f"Failed to load DEM: {dem_path}")
-        
+
         if len(dem_image.shape) == 3:
             dem_image = dem_image[:, :, 0]
-        
+
         if dem_name in self.dem_info:
             min_elev = self.dem_info[dem_name]['min']
             max_elev = self.dem_info[dem_name]['max']
@@ -1376,23 +1319,21 @@ class yilanDataset(Dataset):
             real_height = dem_image / 255.0 * elev_range + min_elev
             dem_normalized = (real_height - (-3)) / (125 + 3) * 255
             dem_image = np.clip(dem_normalized, 0, 255).astype(np.uint8)
-        
+
         # ===== 讀取 TUFLOW 真值 =====
         d_path = self.__find_tuflow_image(dem_name, flow_num, timestep, 'd')
         vx_path = self.__find_tuflow_image(dem_name, flow_num, timestep, 'vx')
         vy_path = self.__find_tuflow_image(dem_name, flow_num, timestep, 'vy')
-        
+
         flood_image = cv2.imread(d_path, cv2.IMREAD_UNCHANGED)
-        vx_image = cv2.imread(vx_path, cv2.IMREAD_UNCHANGED)
-        vy_image = cv2.imread(vy_path, cv2.IMREAD_UNCHANGED)
-        
-        if any(img is None for img in [flood_image, vx_image, vy_image]):
+        vx_image = None
+        vy_image = None
+
+        if any(img is None for img in [flood_image]):
             raise FileNotFoundError(f"Failed to load TUFLOW images")
-        
+
         flood_image = np.array(flood_image, dtype=np.uint8)
-        vx_image = np.array(vx_image, dtype=np.uint8)
-        vy_image = np.array(vy_image, dtype=np.uint8)
-        
+
         # ===== 讀取 CA4D 引導 =====
         ca4d_image = None
         if self.use_ca4d:
@@ -1400,31 +1341,23 @@ class yilanDataset(Dataset):
             try:
                 if all(os.path.exists(p) for p in ca4d_paths.values()):
                     ca4d_d = cv2.imread(ca4d_paths['d'], cv2.IMREAD_GRAYSCALE)
-                    ca4d_vx = cv2.imread(ca4d_paths['vx'], cv2.IMREAD_GRAYSCALE)
-                    ca4d_vy = cv2.imread(ca4d_paths['vy'], cv2.IMREAD_GRAYSCALE)
-                    
-                    if all(img is not None for img in [ca4d_d, ca4d_vx, ca4d_vy]):
+
+                    if all(img is not None for img in [ca4d_d]):
                         ca4d_d = self.transform(ca4d_d)
-                        ca4d_vx = self.transform(ca4d_vx)
-                        ca4d_vy = self.transform(ca4d_vy)
-                        
-                        ca4d_image = torch.cat([
-                            (ca4d_d * 2) - 1,
-                            (ca4d_vx * 2) - 1,
-                            (ca4d_vy * 2) - 1
-                        ], dim=0)
+
+                        ca4d_image = (ca4d_d * 2) - 1
             except Exception as e:
                 print(f"[WARNING] Failed to load CA4D: {e}")
-        
+
         if ca4d_image is None:
-            ca4d_image = torch.zeros((3, 256, 256))
-        
+            ca4d_image = torch.zeros((1, 256, 256))
+
         # ===== 讀取 SPM 引導 =====
         spm_image = None
         if self.use_spm:
             # [FIXED] 使用與 floodDataset 相同的 SPM 值邏輯
             spm_path = os.path.join(self.spm_folder, dem_name, f'SPM_{dem_name}_{spm_value}.png')
-            
+
             try:
                 if os.path.exists(spm_path):
                     spm_image = cv2.imread(spm_path, cv2.IMREAD_GRAYSCALE)
@@ -1432,21 +1365,17 @@ class yilanDataset(Dataset):
                         spm_image = self.transform(spm_image)
             except Exception as e:
                 print(f"[WARNING] Failed to load SPM: {spm_path}, {e}")
-        
+
         if spm_image is None:
             spm_image = torch.zeros((1, 256, 256))
-        
+
         # ===== 影像標準化 =====
         dem_image = self.transform(dem_image)
         flood_image = self.transform(flood_image)
-        vx_image = self.transform(vx_image)
-        vy_image = self.transform(vy_image)
-        
+
         dem_image = (dem_image - 0.1623) / 0.1836
         flood_image = (flood_image - 0.9880) / 0.0279
-        vx_image = (vx_image - 0.3571) / 0.0999
-        vy_image = (vy_image - 0.4413) / 0.0846
-        
+
         # ===== 取得下一時間步資料 =====
         next_data = None
         if timestep < 24:
@@ -1459,29 +1388,30 @@ class yilanDataset(Dataset):
                     next_data = (next_flood, None)
             except:
                 pass
-        
+
         max_depth = self.terrain_depths.get(dem_name, 4.0)
         dem_id = int(dem_name.replace('yilan', ''))
-        
+
         return (flood_image, vx_image, vy_image, dem_image,
                 None, None, None,
                 rainfall_array, d_path, vx_path, vy_path,  # [FIXED] 使用 24 步序列
                 spm_image,
                 ca4d_image,
                 next_data, max_depth, dem_id)
-    
+
 class hsinchuDataset(Dataset):
     def __init__(self, opt, test_dem_list=None):
         super(hsinchuDataset, self).__init__()
         self.opt = opt
-        
+        self.data_root = Path(getattr(opt, "dataset_dir", None) or Path(__file__).resolve().parents[2] / "data").expanduser().resolve()
+
         # ===== 模型配置標誌 =====
         self.use_spm = getattr(opt, 'spm', False) if opt is not None else False
         self.use_ca4d = getattr(opt, 'ca4d', False) if opt is not None else False
-        
+
         # 資料根路徑
-        base_path = 'C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\hsinchu'
-        
+        base_path = str(self.data_root / 'hsinchu')
+
         # ===== 路徑設定 =====
         self.dem_folder = os.path.join(base_path, 'dem')
         self.tuflow_d_folder = os.path.join(base_path, 'tuflow', 'd')
@@ -1489,93 +1419,93 @@ class hsinchuDataset(Dataset):
         self.tuflow_vy_folder = os.path.join(base_path, 'tuflow', 'vy')
         self.ca4d_folder = os.path.join(base_path, 'ca4d')
         self.spm_folder = os.path.join(base_path, 'spm')
-        
+
         # ===== 載入統計資訊 =====
         maxmin_dem_path = os.path.join(base_path, 'maxmin_dem.csv')
         self.dem_stats = pd.read_csv(maxmin_dem_path)
-        dem_dict = dict(zip(self.dem_stats['terrain'].astype(str), 
+        dem_dict = dict(zip(self.dem_stats['terrain'].astype(str),
                            zip(self.dem_stats['min_elevation'], self.dem_stats['max_elevation'])))
-        
+
         maxmin_duv_path = os.path.join(base_path, 'maxmin_duv.csv')
         duv_stats = pd.read_csv(maxmin_duv_path)
         self.terrain_depths = dict(zip(duv_stats['terrain'].astype(str), duv_stats['depth_max']))
         print(f"[yilanDataset] Loaded terrain depths: {self.terrain_depths}")
-        
+
         rainfall_path = os.path.join(base_path, 'scenario_rainfall.csv')
         rainfall_df = pd.read_csv(rainfall_path)
-        
+
         # ===== [FIXED] 與 floodDataset 一致的降雨處理邏輯 =====
         self.cell_positions = []  # (dem_name, rf_scenario, timestep)
         self.rainfall_values = []  # [FIXED] 儲存 24 步序列 (與 floodDataset 一致)
         self.spm_values = []       # [FIXED] 儲存對應的 SPM 值
         self.dem_info = {}
-        
+
         dem_names = ['hsinchu01']
-        
+
         for dem_name in dem_names:
             dem_png_path = os.path.join(self.dem_folder, f'{dem_name}.png')
             if not os.path.exists(dem_png_path):
                 print(f"[WARNING] DEM not found: {dem_png_path}")
                 continue
-            
+
             if dem_name in dem_dict:
                 min_elev, max_elev = dem_dict[dem_name]
                 self.dem_info[dem_name] = {'min': min_elev, 'max': max_elev}
-            
+
             # ===== [FIXED] 與 floodDataset 相同的遍歷邏輯 =====
             for col_idx, col in enumerate(rainfall_df.columns):
                 if col == 'time':
                     continue
-                
+
                 try:
                     flow_num = int(col.split('_')[1])
                 except:
                     continue
-                
+
                 # [FIXED] 逐時間步遍歷並累積降雨
                 cell_values = []
                 for row_idx in range(25):
                     # 取得該時間步的降雨值
                     cell_value = rainfall_df.iloc[row_idx][col]
-                    
+
                     # [FIXED] 向上取整 (與 floodDataset 一致)
                     cell_values.append(np.ceil(cell_value))
-                    
+
                     # [FIXED] 構造 24 步序列 (與 floodDataset 相同)
                     temp = [0] * (24 - len(cell_values))
                     temp.extend(cell_values)
                     if len(temp) == 25:
                         temp = temp[1:]
-                    
+
                     # 計算累積降雨
                     sum_rainfall = sum(temp[:])
-                    
+
                     # [FIXED] 根據 ceil 後的降雨計算 SPM 值
                     spm_value = int(np.ceil(sum_rainfall / 5) * 5)
-                    
+
                     # 儲存樣本
                     self.cell_positions.append((dem_name, flow_num, row_idx))
                     self.rainfall_values.append(np.array(temp[:], dtype=np.int64))  # [FIXED] 儲存 24 步序列
                     self.spm_values.append(spm_value)
-        
+
         print(f"[yilanDataset] Initialized with {len(self.cell_positions)} samples")
         print(f"              Terrain: yilan1, yilan2, yilan3")
         print(f"              Scenarios: 10 inflow points × 25 timesteps (0-24 hours)")
-        
+
         self.transform = T.Compose([
             T.ToTensor(),
         ])
-    
+
     def __len__(self):
         return len(self.cell_positions)
-    
+
     def __find_dem_image(self, dem_name):
         """根據 DEM 名稱找到對應的 DEM 圖像路徑"""
         dem_path = os.path.join(self.dem_folder, f'{dem_name}.png')
         return dem_path
-    
+
     def __find_tuflow_image(self, dem_name, flow_num, timestep, channel):
-        
+
         if channel == 'd':
             folder = self.tuflow_d_folder
         elif channel == 'vx':
@@ -1584,30 +1514,25 @@ class hsinchuDataset(Dataset):
             folder = self.tuflow_vy_folder
         else:
             raise ValueError(f"Unknown channel: {channel}")
-        
+
         filename = f"{dem_name}_RF{flow_num:02d}_{channel}_{timestep:03d}_00.png"
         rf_folder = f"RF{flow_num:02d}"
         image_path = os.path.join(folder, dem_name, rf_folder, filename)
         return image_path
-    
+
     def __find_ca4d_images(self, dem_name, flow_num, timestep):
         """
         找到 CA4D 引導圖像 (d, vx, vy)
-        回傳字典: {'d': path_d, 'vx': path_vx, 'vy': path_vy}
         """
         rf_scenario = f"rf{flow_num:02d}"
         time_str = f"{timestep:03d}"
-        
+
         paths = {
             'd': os.path.join(self.ca4d_folder, 'd', dem_name, rf_scenario,
                             f"ca4d_{dem_name}_{rf_scenario}_d_{time_str}.png"),
-            'vx': os.path.join(self.ca4d_folder, 'vx', dem_name, rf_scenario,
-                             f"ca4d_{dem_name}_{rf_scenario}_vx_{time_str}.png"),
-            'vy': os.path.join(self.ca4d_folder, 'vy', dem_name, rf_scenario,
-                             f"ca4d_{dem_name}_{rf_scenario}_vy_{time_str}.png")
         }
         return paths
-    
+
     def get_next_timestep_data(self, dem_name, flow_num, timestep):
         """
         獲取下一個時間步的水深資料 (timestep+1)
@@ -1617,40 +1542,40 @@ class hsinchuDataset(Dataset):
             next_timestep = timestep + 1
             if next_timestep > 24:
                 return None
-            
+
             next_d_path = self.__find_tuflow_image(dem_name, flow_num, next_timestep, 'd')
-            
+
             if not os.path.exists(next_d_path):
                 return None
-            
+
             next_flood = cv2.imread(next_d_path, cv2.IMREAD_UNCHANGED)
             if next_flood is None:
                 return None
-            
+
             next_flood = np.array(next_flood, dtype=np.uint8)
             next_flood = self.transform(next_flood)
             next_flood = (next_flood - 0.9738) / 0.05726
-            
+
             return (next_flood, None)
         except Exception as e:
             print(f"[WARNING] Failed to load next timestep data: {e}")
             return None
-    
+
     def __getitem__(self, index):
         dem_name, flow_num, timestep = self.cell_positions[index]
         rainfall_array = self.rainfall_values[index]  # [FIXED] 取得 24 步序列
         spm_value = self.spm_values[index]            # [FIXED] 取得對應的 SPM 值
-        
+
         # ===== 讀取 DEM =====
         dem_path = self.__find_dem_image(dem_name)
         dem_image = cv2.imread(dem_path, cv2.IMREAD_UNCHANGED)
-        
+
         if dem_image is None:
             raise FileNotFoundError(f"Failed to load DEM: {dem_path}")
-        
+
         if len(dem_image.shape) == 3:
             dem_image = dem_image[:, :, 0]
-        
+
         if dem_name in self.dem_info:
             min_elev = self.dem_info[dem_name]['min']
             max_elev = self.dem_info[dem_name]['max']
@@ -1658,23 +1583,21 @@ class hsinchuDataset(Dataset):
             real_height = dem_image / 255.0 * elev_range + min_elev
             dem_normalized = (real_height - (-3)) / (125 + 3) * 255
             dem_image = np.clip(dem_normalized, 0, 255).astype(np.uint8)
-        
+
         # ===== 讀取 TUFLOW 真值 =====
         d_path = self.__find_tuflow_image(dem_name, flow_num, timestep, 'd')
         vx_path = self.__find_tuflow_image(dem_name, flow_num, timestep, 'vx')
         vy_path = self.__find_tuflow_image(dem_name, flow_num, timestep, 'vy')
-        
+
         flood_image = cv2.imread(d_path, cv2.IMREAD_UNCHANGED)
-        vx_image = cv2.imread(vx_path, cv2.IMREAD_UNCHANGED)
-        vy_image = cv2.imread(vy_path, cv2.IMREAD_UNCHANGED)
-        
-        if any(img is None for img in [flood_image, vx_image, vy_image]):
+        vx_image = None
+        vy_image = None
+
+        if any(img is None for img in [flood_image]):
             raise FileNotFoundError(f"Failed to load TUFLOW images for {dem_name}_rf{flow_num:02d}_{timestep:03d}")
-        
+
         flood_image = np.array(flood_image, dtype=np.uint8)
-        vx_image = np.array(vx_image, dtype=np.uint8)
-        vy_image = np.array(vy_image, dtype=np.uint8)
-        
+
         # ===== 讀取 CA4D 引導 =====
         ca4d_image = None
         if self.use_ca4d:
@@ -1682,31 +1605,23 @@ class hsinchuDataset(Dataset):
             try:
                 if all(os.path.exists(p) for p in ca4d_paths.values()):
                     ca4d_d = cv2.imread(ca4d_paths['d'], cv2.IMREAD_GRAYSCALE)
-                    ca4d_vx = cv2.imread(ca4d_paths['vx'], cv2.IMREAD_GRAYSCALE)
-                    ca4d_vy = cv2.imread(ca4d_paths['vy'], cv2.IMREAD_GRAYSCALE)
-                    
-                    if all(img is not None for img in [ca4d_d, ca4d_vx, ca4d_vy]):
+
+                    if all(img is not None for img in [ca4d_d]):
                         ca4d_d = self.transform(ca4d_d)
-                        ca4d_vx = self.transform(ca4d_vx)
-                        ca4d_vy = self.transform(ca4d_vy)
-                        
-                        ca4d_image = torch.cat([
-                            (ca4d_d * 2) - 1,
-                            (ca4d_vx * 2) - 1,
-                            (ca4d_vy * 2) - 1
-                        ], dim=0)
+
+                        ca4d_image = (ca4d_d * 2) - 1
             except Exception as e:
                 print(f"[WARNING] Failed to load CA4D for {dem_name}: {e}")
-        
+
         if ca4d_image is None:
-            ca4d_image = torch.zeros((3, 256, 256))
-        
+            ca4d_image = torch.zeros((1, 256, 256))
+
         # ===== 讀取 SPM 引導 =====
         spm_image = None
         if self.use_spm:
             # [FIXED] 使用與 floodDataset 相同的 SPM 值邏輯
             spm_path = os.path.join(self.spm_folder, dem_name, f'SPM_{dem_name}_{spm_value}.png')
-            
+
             try:
                 if os.path.exists(spm_path):
                     spm_image = cv2.imread(spm_path, cv2.IMREAD_GRAYSCALE)
@@ -1714,49 +1629,45 @@ class hsinchuDataset(Dataset):
                         spm_image = self.transform(spm_image)
             except Exception as e:
                 print(f"[WARNING] Failed to load SPM: {spm_path}, {e}")
-        
+
         if spm_image is None:
             spm_image = torch.zeros((1, 256, 256))
-        
+
         # ===== 影像標準化 =====
         dem_image = self.transform(dem_image)
         flood_image = self.transform(flood_image)
-        vx_image = self.transform(vx_image)
-        vy_image = self.transform(vy_image)
-        
+
         dem_image = (dem_image - 0.2791473) / 0.1448155
         flood_image = (flood_image - 0.9751028) / 0.0546909
-        vx_image = (vx_image - 0.6713106) / 0.025608
-        vy_image = (vy_image - 0.461086) / 0.0237567
-        
+
         # ===== 取得下一時間步資料 =====
-        next_data = self.get_next_timestep_data(dem_name, flow_num, timestep)
-        
+        next_data = None
+
         max_depth = self.terrain_depths.get(dem_name, 4.0)
         dem_id = int(dem_name.replace('yilan', ''))
-        
+
         return (flood_image, vx_image, vy_image, dem_image,
                 None, None, None,
                 rainfall_array, d_path, vx_path, vy_path,  # [FIXED] 使用 24 步序列
                 spm_image,
                 ca4d_image,
                 next_data, max_depth, dem_id)
-    
+
     def __getitem__(self, index):
         dem_name, flow_num, timestep = self.cell_positions[index]
         rainfall_array = self.rainfall_values[index]  # [FIXED] 取得 24 步序列
         spm_value = self.spm_values[index]            # [FIXED] 取得對應的 SPM 值
-        
+
         # ===== 讀取 DEM =====
         dem_path = self.__find_dem_image(dem_name)
         dem_image = cv2.imread(dem_path, cv2.IMREAD_UNCHANGED)
-        
+
         if dem_image is None:
             raise FileNotFoundError(f"Failed to load DEM: {dem_path}")
-        
+
         if len(dem_image.shape) == 3:
             dem_image = dem_image[:, :, 0]
-        
+
         if dem_name in self.dem_info:
             min_elev = self.dem_info[dem_name]['min']
             max_elev = self.dem_info[dem_name]['max']
@@ -1764,23 +1675,21 @@ class hsinchuDataset(Dataset):
             real_height = dem_image / 255.0 * elev_range + min_elev
             dem_normalized = (real_height - (-3)) / (125 + 3) * 255
             dem_image = np.clip(dem_normalized, 0, 255).astype(np.uint8)
-        
+
         # ===== 讀取 TUFLOW 真值 =====
         d_path = self.__find_tuflow_image(dem_name, flow_num, timestep, 'd')
         vx_path = self.__find_tuflow_image(dem_name, flow_num, timestep, 'vx')
         vy_path = self.__find_tuflow_image(dem_name, flow_num, timestep, 'vy')
-        
+
         flood_image = cv2.imread(d_path, cv2.IMREAD_UNCHANGED)
-        vx_image = cv2.imread(vx_path, cv2.IMREAD_UNCHANGED)
-        vy_image = cv2.imread(vy_path, cv2.IMREAD_UNCHANGED)
-        
-        if any(img is None for img in [flood_image, vx_image, vy_image]):
+        vx_image = None
+        vy_image = None
+
+        if any(img is None for img in [flood_image]):
             raise FileNotFoundError(f"Failed to load TUFLOW images")
-        
+
         flood_image = np.array(flood_image, dtype=np.uint8)
-        vx_image = np.array(vx_image, dtype=np.uint8)
-        vy_image = np.array(vy_image, dtype=np.uint8)
-        
+
         # ===== 讀取 CA4D 引導 =====
         ca4d_image = None
         if self.use_ca4d:
@@ -1788,31 +1697,23 @@ class hsinchuDataset(Dataset):
             try:
                 if all(os.path.exists(p) for p in ca4d_paths.values()):
                     ca4d_d = cv2.imread(ca4d_paths['d'], cv2.IMREAD_GRAYSCALE)
-                    ca4d_vx = cv2.imread(ca4d_paths['vx'], cv2.IMREAD_GRAYSCALE)
-                    ca4d_vy = cv2.imread(ca4d_paths['vy'], cv2.IMREAD_GRAYSCALE)
-                    
-                    if all(img is not None for img in [ca4d_d, ca4d_vx, ca4d_vy]):
+
+                    if all(img is not None for img in [ca4d_d]):
                         ca4d_d = self.transform(ca4d_d)
-                        ca4d_vx = self.transform(ca4d_vx)
-                        ca4d_vy = self.transform(ca4d_vy)
-                        
-                        ca4d_image = torch.cat([
-                            (ca4d_d * 2) - 1,
-                            (ca4d_vx * 2) - 1,
-                            (ca4d_vy * 2) - 1
-                        ], dim=0)
+
+                        ca4d_image = (ca4d_d * 2) - 1
             except Exception as e:
                 print(f"[WARNING] Failed to load CA4D: {e}")
-        
+
         if ca4d_image is None:
-            ca4d_image = torch.zeros((3, 256, 256))
-        
+            ca4d_image = torch.zeros((1, 256, 256))
+
         # ===== 讀取 SPM 引導 =====
         spm_image = None
         if self.use_spm:
             # [FIXED] 使用與 floodDataset 相同的 SPM 值邏輯
             spm_path = os.path.join(self.spm_folder, dem_name, f'SPM_{dem_name}_{spm_value}.png')
-            
+
             try:
                 if os.path.exists(spm_path):
                     spm_image = cv2.imread(spm_path, cv2.IMREAD_GRAYSCALE)
@@ -1820,20 +1721,16 @@ class hsinchuDataset(Dataset):
                         spm_image = self.transform(spm_image)
             except Exception as e:
                 print(f"[WARNING] Failed to load SPM: {spm_path}, {e}")
-        
+
         if spm_image is None:
             spm_image = torch.zeros((1, 256, 256))
-        
+
         # ===== 影像標準化 =====
         dem_image = self.transform(dem_image)
         flood_image = self.transform(flood_image)
-        vx_image = self.transform(vx_image)
-        vy_image = self.transform(vy_image)
-        
+
         dem_image = (dem_image - 0.279147398) / 0.14481558
         flood_image = (flood_image - 0.9751028) / 0.0256081
-        vx_image = (vx_image - 0.6713106) / 0.025608
-        vy_image = (vy_image - 0.461086) / 0.0237567
 
         # ===== 取得下一時間步資料 =====
         next_data = None
@@ -1847,13 +1744,13 @@ class hsinchuDataset(Dataset):
                     next_data = (next_flood, None)
             except:
                 pass
-        
+
         max_depth = self.terrain_depths.get(dem_name, 4.0)
         dem_id = int(dem_name.replace('hsinchu', ''))
-        
+
         return (flood_image, vx_image, vy_image, dem_image,
                 None, None, None,
                 rainfall_array, d_path, vx_path, vy_path,  # [FIXED] 使用 24 步序列
                 spm_image,
                 ca4d_image,
-                next_data, max_depth, dem_id)    
+                next_data, max_depth, dem_id)

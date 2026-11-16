@@ -45,7 +45,7 @@ def create_training_options():
     # --------------- basic ---------------
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed",           type=int,   default=0)
-    parser.add_argument("--name",           type=str,   default='flood-single-b128-sde-norm-novar-spm-mass',        help="experiment ID")
+    parser.add_argument("--name",           type=str,   default='flood-depth-only',        help="experiment ID")
     parser.add_argument("--ckpt",           type=str,   default=None,        help="resumed checkpoint name")
     parser.add_argument("--gpu",            type=int,   default=None,        help="set only if you wish to run on a particular device; use -1 for CPU")
     parser.add_argument("--n-gpu-per-node", type=int,   default=1,           help="number of gpu on each node")
@@ -57,7 +57,7 @@ def create_training_options():
 
     # --------------- SB model ---------------
     parser.add_argument("--image-size",     type=int,   default=256)
-    parser.add_argument("--dataset-dir", type=Path, default="C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\dems\\", help="path to dataset")
+    parser.add_argument("--dataset-dir", type=Path, default=Path(__file__).resolve().parent.parent / "data", help="data root containing tainan_dem.png, train_rf.csv, train/, dems/, etc.")
     parser.add_argument("--latent-space", action="store_true", default=False, help="use latent space model")
     parser.add_argument("--normalize-latent", action="store_true", default=False, help="normalize latent space")
     parser.add_argument("--timestep-importance", type=str, default='continuous', help="use timestep importance")
@@ -75,7 +75,7 @@ def create_training_options():
     
     # [MODIFIED] 同時支援 SPM 和 CA4D (雙物理模型)
     parser.add_argument("--spm",            action="store_true",  default=False,          help="use SPM guidance (1-channel spatial prior map)")
-    parser.add_argument("--ca4d",           action="store_true",  default=False,          help="use CA4D guidance (h, vx, vy) for conditional network")
+    parser.add_argument("--ca4d",           action="store_true",  default=False,          help="use depth-only CA4D guidance (d)")
     
     parser.add_argument("--add-x1-noise",   action="store_true",             help="add noise to conditional network")
 
@@ -97,7 +97,6 @@ def create_training_options():
     parser.add_argument("--dt",             type=float, default=3600.0,      help="temporal resolution (seconds, default=1 hour)")
 
     # --------------- path and logging ---------------
-    # parser.add_argument("--dataset-dir",    type=Path,  default="/dataset",  help="path to LMDB dataset")
     parser.add_argument("--log-dir",        type=Path,  default=".log",      help="path to log std outputs and writer data")
     parser.add_argument("--log-writer",     type=str,   default='tensorbard',        help="log writer: can be tensorbard, wandb, or None")
     parser.add_argument("--wandb-api-key",  type=str,   default=None,        help="unique API key of your W&B account; see https://wandb.ai/authorize")
@@ -111,6 +110,13 @@ def create_training_options():
     parser.add_argument("--test-rain-list", type=str,   default=None,        help="Comma-separated list of test rainfall scenarios to exclude from training, e.g., '9,20,33'")
 
     opt = parser.parse_args()
+    opt.target_channels = 1
+    if opt.use_physics:
+        parser.error('--use-physics requires velocity predictions and is unavailable for depth-only training.')
+    if opt.latent_space or opt.normalize_latent:
+        parser.error('Depth-only training uses pixel space; the existing VQGAN requires three channels.')
+    if opt.spm and opt.ca4d:
+        parser.error('Choose one guidance input: --spm or --ca4d.')
     
     # ========= process test DEM list =========
     if opt.test_dem_list:

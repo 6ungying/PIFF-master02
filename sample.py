@@ -113,146 +113,48 @@ def get_recon_imgs_fn(opt, nfe):
     return recon_imgs_fn
 
 def compute_batch(ckpt_opt, corrupt_type, corrupt_method, out):
-    # [MODIFIED] 處理多種 dataset 回傳格式,支援 SPM 和 CA4D
-    
-    spm = None   # 初始化
-    ca4d = None  # 初始化
-    dem_id = None
-    image_name = None
-    _ = None  # [FIXED] 初始化 _
-
-    if isinstance(out, (list, tuple)) and len(out) >= 10:
-        if len(out) == 16:
-            # [LATEST FORMAT - DUAL MODEL]
-            (flood_image, vx_image, vy_image, dem_image, binary_mask, vx_binary_mask, 
-             vy_binary_mask, rainfall, image_path, vx_path, vy_path, spm_image, ca4d_image, 
-             next_timestep_data, max_depth, dem_id) = out
-            
-            # 1. 構建 x1：DEM 作為條件輸入 (3 Channel [dem, dem, dem])
-            try:
-                x1 = torch.cat([dem_image, dem_image, dem_image], dim=1)
-            except Exception:
-                x1 = dem_image
-            
-            x1 = x1.to(opt.device)
-            
-            try:
-                corrupt_img = torch.cat([flood_image, vx_image, vy_image], dim=1)
-            except Exception:
-                corrupt_img = flood_image
-            
-            # 2. Mask: 強制設為 None (全圖預測)
-            mask = None 
-            
-            # 3. Label (Rainfall)
-            if not torch.is_tensor(rainfall):
-                y = torch.tensor(rainfall, dtype=torch.long)
-            else:
-                y = rainfall.long()
-            if y.dim() == 1:
-                y = y.unsqueeze(0)
-            y = y.clamp(min=0, max=99).to(opt.device)
-            
-            image_name = image_path
-            
-            # 4. SPM Guidance - [FIXED] 先計算 y_val，再在 if/else 中使用
-            if torch.is_tensor(y):
-                # y 是 [batch_size, 24] 或 [24]
-                if y.dim() > 1:
-                    # batch 模式：计算每个样本的总降雨量
-                    y_total = y.sum(dim=1)  # [batch_size]
-                else:
-                    # 单样本模式
-                    y_total = y.sum().unsqueeze(0)  # [1]
-            else:
-                y_total = torch.tensor([float(y)])
-
-            # [FIXED] 根據 checkpoint 設定決定是否使用 SPM
-            use_spm = getattr(ckpt_opt, 'spm', False)
-            if use_spm and spm_image is not None:
-                # 处理 batch 中的第一个样本用于 debug
-                dem_num = dem_id[0].item() if torch.is_tensor(dem_id) and dem_id.numel() > 1 else (dem_id.item() if torch.is_tensor(dem_id) else int(dem_id))
-                y_val = y_total[0].item() if y_total.numel() > 1 else y_total.item()
-                expected_spm_value = int(np.ceil(y_val / 5.0) * 5)
-                
-                print(f"[SPM Verify] batch_size={spm_image.shape[0]}, sample_0: total_rainfall={y_val}mm → expected_spm_value={expected_spm_value}, dem={dem_num}")
-                spm = spm_image.to(opt.device)
-            else:
-                spm = None
-            
-            # 5. CA4D Guidance - [FIXED] 根據 checkpoint 設定決定是否使用 CA4D
-            use_ca4d = getattr(ckpt_opt, 'ca4d', False)
-            if use_ca4d and ca4d_image is not None:
-                ca4d = ca4d_image.to(opt.device)
-            else:
-                ca4d = None
-            
-            _ = (vx_path, vy_path, next_timestep_data, max_depth)
-        
-        elif len(out) == 15:
-            # [LEGACY FORMAT - CA4D ONLY]
-            (flood_image, vx_image, vy_image, dem_image, binary_mask, vx_binary_mask, 
-             vy_binary_mask, rainfall, image_path, vx_path, vy_path, ca4d_image, 
-             next_timestep_data, max_depth, dem_id) = out
-            
-            # [FIXED] 明確設定 spm_image = None（此格式不含 SPM）
-            spm_image = None
-            
-            try:
-                x1 = torch.cat([dem_image, dem_image, dem_image], dim=1)
-            except Exception:
-                x1 = dem_image
-            
-            x1 = x1.to(opt.device)
-            
-            try:
-                corrupt_img = torch.cat([flood_image, vx_image, vy_image], dim=1)
-            except Exception:
-                corrupt_img = flood_image
-            
-            mask = None 
-            
-            if not torch.is_tensor(rainfall):
-                y = torch.tensor(rainfall, dtype=torch.long)
-            else:
-                y = rainfall.long()
-            if y.dim() == 1:
-                y = y.unsqueeze(0)
-            y = y.clamp(min=0, max=99).to(opt.device)
-            
-            # [FIXED] 根據 checkpoint 設定決定是否使用 SPM
-            use_spm = getattr(ckpt_opt, 'spm', False)
-            if use_spm and spm_image is not None:
-                spm = spm_image.to(opt.device)
-            else:
-                spm = None
-            
-            # 5. CA4D Guidance
-            use_ca4d = getattr(ckpt_opt, 'ca4d', False)
-            if use_ca4d and ca4d_image is not None:
-                ca4d = ca4d_image.to(opt.device)
-            else:
-                ca4d = None
-            
-            _ = (vx_path, vy_path, next_timestep_data, max_depth)
-            
-        else:
-             raise ValueError(f"Unsupported dataset output format with length={len(out)}")
-
+    """Prepare depth/DEM batches; velocity tuple slots are intentionally unused."""
+    if len(out) == 16:
+        depth, _, _, dem, _, _, _, rainfall, paths, _, _, spm, ca4d, next_data, max_depth, dem_id = out
+    elif len(out) == 15:
+        depth, _, _, dem, _, _, _, rainfall, paths, _, _, ca4d, next_data, max_depth, dem_id = out
+        spm = None
     else:
-        # Standard ImageNet case (not used here)
-        clean_img, y = out
-        mask = None
-        corrupt_img = corrupt_method(clean_img.to(opt.device))
-        x1 = corrupt_img.to(opt.device)
-        image_name = None
-
+        raise ValueError(f"Unsupported flood dataset output length: {len(out)}")
+    device = ckpt_opt.device
+    clean = torch.nan_to_num(depth[:, :1].to(device), nan=0.01)
+    x1 = torch.nan_to_num(dem[:, :1].to(device), nan=0.0)
+    y = torch.as_tensor(rainfall, dtype=torch.long, device=device)
+    if y.dim() == 1:
+        y = y.unsqueeze(0)
+    y = y.clamp(0, 99)
+    spm = spm.to(device) if getattr(ckpt_opt, 'spm', False) and spm is not None else None
+    ca4d = ca4d.to(device) if getattr(ckpt_opt, 'ca4d', False) and ca4d is not None else None
     cond = x1.detach() if ckpt_opt.cond_x1 else None
-    if ckpt_opt.add_x1_noise: 
+    if ckpt_opt.add_x1_noise:
         x1 = x1 + torch.randn_like(x1)
+    return clean, x1, None, cond, y, paths, spm, ca4d, (next_data, max_depth, dem_id)
 
-    # [FIXED] 確保所有變數都已定義後再返回
-    return corrupt_img, x1, mask, cond, y, image_name, spm, ca4d, _
+
+def depth_to_image(depth, image_path, single_dem=False):
+    """Undo the depth normalization used by each dataset."""
+    name = str(image_path).lower()
+    if 'hsinchu' in name:
+        mean, std = 0.9751028, 0.0256081
+    elif 'yilan' in name:
+        mean, std = 0.9880, 0.0279
+    else:
+        mean, std = (0.987, 0.0343) if single_dem else (0.986, 0.0405)
+    return (depth * std + mean).clamp(0, 1)
+
+
+def save_depth_image(depth, image_path, output_dir, single_dem=False):
+    from PIL import Image
+    depth = depth_to_image(depth, image_path, single_dem)
+    name = Path(str(image_path).replace('\\', '/')).stem
+    pixels = (depth[0].detach().cpu().numpy() * 255).round().astype(np.uint8)
+    Image.fromarray(pixels).save(Path(output_dir) / f'recon_{name}.png')
+
 
 @torch.no_grad()
 def main(opt):
@@ -383,52 +285,8 @@ def main(opt):
         for i in range(len(recon_img)):
             rec = recon_img[i]
 
-            # [MODIFIED] Denormalization Logic - 根據資料集選擇反標準化參數
-            img_path_str = str(image_name[i]).lower()
-            is_yilan = 'yilan' in img_path_str
-            is_hsinchu = 'hsinchu' in img_path_str
-
-            if rec.shape[0] >= 3:
-                if is_hsinchu:
-                    # ===== Hsinchu 統計參數 =====
-                    depth_rec = rec[0:1] * 0.0256081 + 0.9751028
-                    vx_rec = rec[1:2] * 0.025608 + 0.6713106
-                    vy_rec = rec[2:3] * 0.0237567 + 0.461086
-                elif is_yilan:
-                    # ===== Yilan 統計參數 =====
-                    depth_rec = rec[0:1] * 0.0573 + 0.9738
-                    vx_rec = rec[1:2] * 0.1852 * 0.01 + 0.4191
-                    vy_rec = rec[2:3] * 0.1401 * 0.01 + 0.4699
-                else:
-                    # ===== 訓練集統計參數 (多地形/單地形) =====
-                    depth_rec = rec[0:1] * 0.0405 + 0.987
-                    vx_rec = rec[1:2] * 0.0780 * 0.88 + 0.561
-                    vy_rec = rec[2:3] * 0.0789 * 0.88 + 0.495
-
-            path_base = image_name[i].split("\\")[-1]
-            if path_base.endswith('.png'):
-                path_base = path_base[:-4]
-            
-            # [MODIFIED] Save logic for 3 channels
-            if rec.shape[0] >= 3: 
-                # Save depth
-                depth_name = path_base.replace('_d_', '_d_') + '.png'
-                depth_path = recon_imgs_fn.parent / f"recon_{depth_name}"
-                tu.save_image(depth_rec, depth_path)
-                
-                # Save vx
-                vx_name = path_base.replace('_d_', '_vx_') + '.png'
-                vx_path = recon_imgs_fn.parent / f"recon_{vx_name}"
-                tu.save_image(vx_rec, vx_path)
-                
-                # Save vy
-                vy_name = path_base.replace('_d_', '_vy_') + '.png'
-                vy_path = recon_imgs_fn.parent / f"recon_{vy_name}"
-                tu.save_image(vy_rec, vy_path)
-            else:
-                # Fallback
-                save_path = recon_imgs_fn.parent / f"recon_{path_base}.png"
-                tu.save_image(rec, save_path)
+            save_depth_image(rec, image_name[i], recon_imgs_fn.parent,
+                             single_dem=isinstance(val_dataset, singleDEMFloodDataset))
 
 
 if __name__ == '__main__':
@@ -442,8 +300,8 @@ if __name__ == '__main__':
     parser.add_argument("--eval",        action="store_true", default=True, help="")
     # data
     parser.add_argument("--image-size",     type=int,  default=256)
-    parser.add_argument("--dataset-dir",    type=Path, default="C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\data\\50PNG\\",  help="path to dataset")
-    parser.add_argument("--partition",      type=str,  default=None,        help="e.g., '0_4' means the first 25% of the dataset")
+    parser.add_argument("--dataset-dir", type=Path, default=Path(__file__).resolve().parent.parent / "data", help="data root containing tainan_dem.png, train_rf.csv, train/, dems/, etc.")
+    parser.add_argument("--partition",      type=str,  default=None,        help="e.g., '0_4' means the first 25%% of the dataset")
     parser.add_argument("--use-single-dem", action="store_true", default=False, help="use single DEM flood dataset for testing (instead of multi-DEM)")
     parser.add_argument("--use-yilan",      action="store_true", default=False, help="use Yilan multi-terrain flood dataset for testing")
     parser.add_argument("--use-hsinchu",    action="store_true", default=False, help="use Hsinchu flood dataset for testing")
@@ -457,7 +315,7 @@ if __name__ == '__main__':
     # sample
     parser.add_argument("--batch-size",     type=int,  default=30)
     parser.add_argument("--sampling-method", type=str, default='euler-maruyama', help="sampling method")
-    parser.add_argument("--ckpt",           type=str,  default='C:\\Users\\THINKLAB\\Desktop\\PIFF-master02\\results\\flood-single-b128-sde-norm-novar-ca4d',        help="the checkpoint name from which we wish to sample")
+    parser.add_argument("--ckpt",           type=str,  default='flood-depth-only',        help="depth-only checkpoint folder or name under results/")
     parser.add_argument("--nfe",            type=int,  default=10,        help="sampling steps")
     parser.add_argument("--clip-denoise",   action="store_true",            help="clamp predicted image to [-1,1] at each")
     parser.add_argument("--use-fp16",       action="store_true",            help="use fp16 network weight for faster sampling")

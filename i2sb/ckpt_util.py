@@ -236,6 +236,11 @@ def build_ckpt_option(opt, log, ckpt_path):
             
         log.info(f"Inferred settings: cond_x1={ckpt_opt.cond_x1}, ot_ode={ckpt_opt.ot_ode}, interval={ckpt_opt.interval}")
 
+    if getattr(ckpt_opt, 'target_channels', None) != 1:
+        raise ValueError('This checkpoint is not depth-only. Train a new model with the updated train.py before sampling.')
+    if getattr(ckpt_opt, 'ca4d', False) and getattr(ckpt_opt, 'ca4d_channels', None) != 1:
+        raise ValueError('This checkpoint uses three-channel CA4D guidance. Train a new model using depth-only CA4D guidance.')
+
     overwrite_keys = ["use_fp16", "device"]
     for k in overwrite_keys:
         assert hasattr(opt, k)

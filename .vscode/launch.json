@@ -1,239 +1,527 @@
+// Depth-only model and depth-only CA4D guidance; flooddiff environment.
 {
-    // 使用 IntelliSense 以得知可用的屬性。
-    // 暫留以檢視現有屬性的描述。
-    // 如需詳細資訊，請瀏覽: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Single flood (SPM)-test",
+            "name": "[只有水深 d] Single flood (SPM)-test",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt", "flood-single-spm01", "--use-single-dem" ,"--nfe", "10", "--batch-size", "8"]
+            "args": [
+                "--ckpt",
+                "flood-single-spm01-depth-only",
+                "--use-single-dem",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
-          {
-            "name": "Single flood (SPM)-train",
+        {
+            "name": "[只有水深 d] Single flood (SPM)-train",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/train.py",
             "console": "integratedTerminal",
-            "args": ["--name", "flood-single-spm01", "--use-single-dem" , "--spm","--batch-size", "32"]
+            "args": [
+                "--name",
+                "flood-single-spm01-depth-only",
+                "--use-single-dem",
+                "--spm",
+                "--batch-size",
+                "32",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
         {
-            "name": "Single flood (ca4d)-test",
+            "name": "[只有水深 d] Single flood (CA4D d)-test",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt", "flood-single-ca4d", "--use-single-dem" ,"--nfe", "10", "--batch-size", "8", "--clip-denoise"]
+            "args": [
+                "--ckpt",
+                "flood-single-ca4d-depth-only-d-guidance",
+                "--use-single-dem",
+                "--nfe",
+                "20",
+                "--batch-size",
+                "8",
+                "--clip-denoise",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
-          {
-            "name": "Single flood (ca4d)-train",
+        {
+            "name": "[只有水深 d] Single flood (CA4D d)-train",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/train.py",
             "console": "integratedTerminal",
-            "args": ["--name", "flood-single-ca4d", "--use-single-dem" , "--ca4d","--batch-size", "32"]
+            "args": [
+                "--name",
+                "flood-single-ca4d-depth-only-d-guidance",
+                "--use-single-dem",
+                "--ca4d",
+                "--batch-size",
+                "32",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
         {
-            "name": "Multi flood (SPM)-test",
+            "name": "[只有水深 d] Multi flood (SPM)-test",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt", "flood-multi-spm", "--test-dem-list", "\"8,29,62\"", "--nfe", "10", "--batch-size", "8"]
+            "args": [
+                "--ckpt",
+                "flood-multi-spm-depth-only",
+                "--test-dem-list",
+                "8,29,62",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
-          {
-            "name": "Multi flood (SPM)-train",
+        {
+            "name": "[只有水深 d] Multi flood (SPM)-train",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/train.py",
             "console": "integratedTerminal",
-            "args": ["--name", "flood-multi-spm", "--test-dem-list", "\"8,29,62\"", "--spm","--batch-size", "32"]
+            "args": [
+                "--name",
+                "flood-multi-spm-depth-only",
+                "--test-dem-list",
+                "8,29,62",
+                "--spm",
+                "--batch-size",
+                "32",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
         {
-            "name": "Multi flood (ca4d)-test",
+            "name": "[只有水深 d] Multi flood (CA4D d)-test",
             "type": "debugpy",
             "request": "launch",
-             "program": "${workspaceFolder}/sample.py",
+            "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt", "flood-multi-ca4d", "--test-dem-list", "\"8,29,62\"", "--nfe", "10", "--batch-size", "8"]
+            "args": [
+                "--ckpt",
+                "flood-multi-ca4d-depth-only-d-guidance",
+                "--test-dem-list",
+                "8,29,62",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
         {
-            "name": "Multi flood (ca4d)-train",
+            "name": "[只有水深 d] Multi flood (CA4D d)-train",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/train.py",
             "console": "integratedTerminal",
-            "args": ["--name", "flood-multi-ca4d", "--test-dem-list", "\"8,29,62\"", "--ca4d","--batch-size", "32"]
+            "args": [
+                "--name",
+                "flood-multi-ca4d-depth-only-d-guidance",
+                "--test-dem-list",
+                "8,29,62",
+                "--ca4d",
+                "--batch-size",
+                "32",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
-        
         {
-            "name": "Multi flood (Pure Diffusion)-train",
+            "name": "[只有水深 d] Multi flood (Pure Diffusion)-train",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/train.py",
             "console": "integratedTerminal",
-            "args": ["--name", "flood-multi-pure", "--test-dem-list", "\"8,29,62\"", "--batch-size", "32"]
+            "args": [
+                "--name",
+                "flood-multi-pure-depth-only",
+                "--test-dem-list",
+                "8,29,62",
+                "--batch-size",
+                "32",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
         {
-            "name": "Multi flood (Pure Diffusion)-test",
+            "name": "[只有水深 d] Multi flood (Pure Diffusion)-test",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt", "flood-multi-pure", "--test-dem-list", "\"8,29,62\"", "--nfe", "10", "--batch-size", "8"]
+            "args": [
+                "--ckpt",
+                "flood-multi-pure-depth-only",
+                "--test-dem-list",
+                "8,29,62",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
-        
         {
-            "name": "Multi flood (physics loss)-train",
+            "name": "[只有水深 d] Yilan (Pure Diffusion)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--ckpt",
+                "flood-multi-pure-new-depth-only",
+                "--use-yilan",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
+        },
+        {
+            "name": "[只有水深 d] Yilan (CA4D d)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--ckpt",
+                "flood-multi-ca4d-new-depth-only-d-guidance",
+                "--use-yilan",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
+        },
+        {
+            "name": "[只有水深 d] Yilan (spm)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sample.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--ckpt",
+                "flood-multi-spm-new-depth-only",
+                "--use-yilan",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
+        },
+        {
+            "name": "[只有水深 d] Multi flood (SPM)-train-new (17,42,54 + 9,20,33)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/train.py",
             "console": "integratedTerminal",
-            "args": ["--name", "flood-multi-physics", "--test-dem-list", "\"8,29,62\"", "--use-physics", "--batch-size", "32"]
+            "args": [
+                "--name",
+                "flood-multi-spm-new-depth-only",
+                "--test-dem-list",
+                "17,42,54",
+                "--test-rain-list",
+                "9,20,33",
+                "--spm",
+                "--batch-size",
+                "32",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
         {
-            "name": "Multi flood (physics loss)-test",
+            "name": "[只有水深 d] Multi flood (SPM)-test-new (17,42,54 + 9,20,33)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt", "flood-multi-physics", "--test-dem-list", "\"8,29,62\"", "--nfe", "10", "--batch-size", "8"]
+            "args": [
+                "--ckpt",
+                "flood-multi-spm-new-depth-only",
+                "--test-dem-list",
+                "17,42,54",
+                "--test-rain-list",
+                "9,20,33",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
         {
-            "name": "Yilan (Pure Diffusion)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/sample.py",
-            "console": "integratedTerminal",
-            "args": ["--ckpt" ,"flood-multi-pure-new", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
-        },
-        {
-            "name": "Yilan (physics loss)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/sample.py",
-            "console": "integratedTerminal",
-            "args": ["--ckpt" ,"flood-multi-physics-new", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
-        },
-        {
-            "name": "Yilan (ca4d)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/sample.py",
-            "console": "integratedTerminal",
-            "args": ["--ckpt" ,"flood-multi-ca4d-new", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
-        },
-        {
-            "name": "Yilan (spm)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/sample.py",
-            "console": "integratedTerminal",
-            "args": ["--ckpt" ,"flood-multi-spm-new", "--use-yilan", "--nfe", "10", "--batch-size", "8"]
-        },
-
-        {
-            "name": "Multi flood (SPM)-train-new (17,42,54 + 9,20,33)",
+            "name": "[只有水深 d] Multi flood (CA4D d)-train-new (17,42,54 + 9,20,33)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/train.py",
             "console": "integratedTerminal",
-            "args": ["--name", "flood-multi-spm-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--spm","--batch-size", "32"]
+            "args": [
+                "--name",
+                "flood-multi-ca4d-new-depth-only-d-guidance",
+                "--test-dem-list",
+                "17,42,54",
+                "--test-rain-list",
+                "9,20,33",
+                "--ca4d",
+                "--batch-size",
+                "32",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
         {
-            "name": "Multi flood (SPM)-test-new (17,42,54 + 9,20,33)",
+            "name": "[只有水深 d] Multi flood (CA4D d)-test-new (17,42,54 + 9,20,33)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt", "flood-multi-spm-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--nfe", "10", "--batch-size", "8"]
+            "args": [
+                "--ckpt",
+                "flood-multi-ca4d-new-depth-only-d-guidance",
+                "--test-dem-list",
+                "17,42,54",
+                "--test-rain-list",
+                "9,20,33",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
-
         {
-            "name": "Multi flood (ca4d)-train-new (17,42,54 + 9,20,33)",
+            "name": "[只有水深 d] Multi flood (Pure Diffusion)-train-new (17,42,54 + 9,20,33)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/train.py",
             "console": "integratedTerminal",
-            "args": ["--name", "flood-multi-ca4d-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--ca4d","--batch-size", "32"]
+            "args": [
+                "--name",
+                "flood-multi-pure-new-depth-only",
+                "--test-dem-list",
+                "17,42,54",
+                "--test-rain-list",
+                "9,20,33",
+                "--batch-size",
+                "32",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
         {
-            "name": "Multi flood (ca4d)-test-new (17,42,54 + 9,20,33)",
+            "name": "[只有水深 d] Multi flood (Pure Diffusion)-test-new (17,42,54 + 9,20,33)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt", "flood-multi-ca4d-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--nfe", "10", "--batch-size", "8"]
-        },
-
-        {
-            "name": "Multi flood (Pure Diffusion)-train-new (17,42,54 + 9,20,33)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/train.py",
-            "console": "integratedTerminal",
-            "args": ["--name", "flood-multi-pure-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--batch-size", "32"]
-        },
-        {
-            "name": "Multi flood (Pure Diffusion)-test-new (17,42,54 + 9,20,33)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/sample.py",
-            "console": "integratedTerminal",
-            "args": ["--ckpt", "flood-multi-pure-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--nfe", "10", "--batch-size", "8"]
-        },
-
-        {
-            "name": "Multi flood (physics loss)-train-new (17,42,54 + 9,20,33)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/train.py",
-            "console": "integratedTerminal",
-            "args": ["--name", "flood-multi-physics-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--use-physics", "--batch-size", "32"]
+            "args": [
+                "--ckpt",
+                "flood-multi-pure-new-depth-only",
+                "--test-dem-list",
+                "17,42,54",
+                "--test-rain-list",
+                "9,20,33",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
         {
-            "name": "Multi flood (physics loss)-test-new (17,42,54 + 9,20,33)",
+            "name": "[只有水深 d] Hsinchu (Pure Diffusion)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt", "flood-multi-physics-new", "--test-dem-list", "\"17,42,54\"", "--test-rain-list", "\"9,20,33\"", "--nfe", "10", "--batch-size", "8"]
+            "args": [
+                "--ckpt",
+                "flood-multi-pure-new-depth-only",
+                "--use-hsinchu",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
         {
-            "name": "Hsinchu (Pure Diffusion)",
+            "name": "[只有水深 d] Hsinchu (CA4D d)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt" ,"flood-multi-pure-new", "--use-hsinchu", "--nfe", "10", "--batch-size", "8"]
+            "args": [
+                "--ckpt",
+                "flood-multi-ca4d-new-depth-only-d-guidance",
+                "--use-hsinchu",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
         },
         {
-            "name": "Hsinchu (physics loss)",
+            "name": "[只有水深 d] Hsinchu (spm)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sample.py",
             "console": "integratedTerminal",
-            "args": ["--ckpt" ,"flood-multi-physics-new", "--use-hsinchu", "--nfe", "10", "--batch-size", "8"]
-        },
-        {
-            "name": "Hsinchu (ca4d)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/sample.py",
-            "console": "integratedTerminal",
-            "args": ["--ckpt" ,"flood-multi-ca4d-new", "--use-hsinchu", "--nfe", "10", "--batch-size", "8"]
-        },
-        {
-            "name": "Hsinchu (spm)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/sample.py",
-            "console": "integratedTerminal",
-            "args": ["--ckpt" ,"flood-multi-spm-new", "--use-hsinchu", "--nfe", "10", "--batch-size", "8"]
-        },
-
+            "args": [
+                "--ckpt",
+                "flood-multi-spm-new-depth-only",
+                "--use-hsinchu",
+                "--nfe",
+                "10",
+                "--batch-size",
+                "8",
+                "--dataset-dir",
+                "C:/Users/Hank/Desktop/data"
+            ],
+            "cwd": "${workspaceFolder}",
+            "python": "${userHome}/miniconda3/envs/flooddiff/python.exe",
+            "env": {
+                "PYTHONUTF8": "1"
+            }
+        }
     ]
 }
